@@ -37,14 +37,40 @@ function PlannerPage() {
             hasLoadedInitialTeams.current = true;
           }
           setErrorEvent(null);
-        } else if (eventId === 'demo') {
-          // Fallback dla szybkiego testu / demo
+        } else if (eventId === 'demo' || eventId === 'silesia-ring' || eventId === 'tor-modlin') {
+          // Fallback dla szybkiego testu i darmowych map satelitarnych Esri/ArcGIS bez klucza i karty
+          const mapboxKey = import.meta.env.VITE_MAPBOX_TOKEN || localStorage.getItem('PADOK_MAPBOX_TOKEN');
+          
+          let presetName = 'Tor Poznań — Padok Demo (Darmowa Mapa Esri)';
+          let presetW = 250;
+          let presetH = 180;
+          let bbox = '16.7942,52.4170,16.7982,52.4200';
+          let mbCenter = '16.7962,52.4185';
+
+          if (eventId === 'silesia-ring') {
+            presetName = 'Silesia Ring — Padok Główny (Darmowa Mapa Esri)';
+            presetW = 300;
+            presetH = 200;
+            bbox = '18.0930,50.5310,18.0990,50.5350';
+            mbCenter = '18.0960,50.5330';
+          } else if (eventId === 'tor-modlin') {
+            presetName = 'Tor Modlin — Padok Sportowy (Darmowa Mapa Esri)';
+            presetW = 200;
+            presetH = 150;
+            bbox = '20.6690,52.4630,20.6730,52.4660';
+            mbCenter = '20.6710,52.4645';
+          }
+
+          const demoImageUrl = mapboxKey
+            ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${mbCenter},17,0,0/1024x1024?access_token=${mapboxKey}`
+            : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+
           setEventData({
-            id: 'demo',
-            name: 'Tor Poznań — Padok Demo',
-            widthMeters: 250,
-            heightMeters: 180,
-            imageUrl: 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/16.7962,52.4185,17,0,0/1024x1024?access_token=' + (import.meta.env.VITE_MAPBOX_TOKEN || ''),
+            id: eventId,
+            name: presetName,
+            widthMeters: presetW,
+            heightMeters: presetH,
+            imageUrl: demoImageUrl,
           });
           if (!hasLoadedInitialTeams.current) {
             hasLoadedInitialTeams.current = true;

@@ -87,6 +87,20 @@ export function buildStaticMapUrl(bounds, googleApiKey, mapboxToken) {
     return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${centerLng},${centerLat},${zoom},0,0/1024x1024?access_token=${mapboxToken.trim()}`;
   }
 
-  // Ostateczny fallback na przypadek braku jakichkolwiek kluczy internetowych
-  return 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=1280&q=80';
+  // Ostateczny, darmowy fallback: Esri World Imagery (ArcGIS REST MapServer)
+  // NIE WYMAGA KLUCZA API ANI KARTY BANKOWEJ!
+  let minX = centerLng - 0.002;
+  let maxX = centerLng + 0.002;
+  let minY = centerLat - 0.0015;
+  let maxY = centerLat + 0.0015;
+
+  if (bounds.sw && bounds.ne) {
+    minX = bounds.sw[0];
+    minY = bounds.sw[1];
+    maxX = bounds.ne[0];
+    maxY = bounds.ne[1];
+  }
+
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
 }
+

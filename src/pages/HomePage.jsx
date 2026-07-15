@@ -234,6 +234,43 @@ function HomePage() {
           <p className="mt-6 text-xs text-white/40">
             Darmowy klucz wygenerujesz na <a href="https://account.mapbox.com/" target="_blank" rel="noreferrer" className="text-indigo-300 underline hover:text-indigo-200">account.mapbox.com</a>
           </p>
+
+          {/* Opcja BEZ KLUCZA I BEZ KARTY (Esri World Imagery) */}
+          <div className="mt-8 pt-6 border-t border-white/15 text-left space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-300 uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Darmowy Tryb Bez Kłopotów (Zero Kart i Rejestracji)</span>
+            </div>
+            <p className="text-xs text-white/70 leading-relaxed">
+              Nie chcesz podawać karty w Mapbox? Skorzystaj z darmowych map satelitarnych <strong>Esri World Imagery (ArcGIS)</strong> dla najpopularniejszych torów wyścigowych. Działa natychmiast, bez klucza API!
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => navigate('/planner/demo')}
+                className="px-3 py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+              >
+                <span className="text-emerald-300 font-bold">🟢 Tor Poznań</span>
+                <span className="text-[10px] text-white/60">Padok Główny (250×180m)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/planner/silesia-ring')}
+                className="px-3 py-3 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+              >
+                <span className="text-blue-300 font-bold">🔵 Silesia Ring</span>
+                <span className="text-[10px] text-white/60">Padok Główny (300×200m)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/planner/tor-modlin')}
+                className="px-3 py-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+              >
+                <span className="text-purple-300 font-bold">🟣 Tor Modlin</span>
+                <span className="text-[10px] text-white/60">Padok Sportowy (200×150m)</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
