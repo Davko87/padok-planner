@@ -24,6 +24,7 @@ function HomePage() {
   const [tokenInput, setTokenInput] = useState('');
   const [googleKeyInput, setGoogleKeyInput] = useState('');
   const [showGoogleKeyInput, setShowGoogleKeyInput] = useState(false);
+  const [showAdvancedTokenInput, setShowAdvancedTokenInput] = useState(false);
 
   const [isFlying, setIsFlying] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
@@ -199,77 +200,109 @@ function HomePage() {
   if (!mapboxToken) {
     return (
       <div className="relative h-full w-full flex items-center justify-center p-4 overflow-hidden bg-mesh">
-        <div className="glass-panel-strong p-8 md:p-12 max-w-lg w-full text-center animate-fade-in shadow-2xl border-white/30">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-500/30 border border-indigo-400/30 flex items-center justify-center mx-auto mb-6">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+        <div className="glass-panel-strong p-8 md:p-11 max-w-xl w-full text-center animate-fade-in shadow-2xl border-white/30">
+          {/* Top Header Icon */}
+          <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(16,185,129,0.25)]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-9 h-9 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
             </svg>
           </div>
 
-          <h2 className="text-2xl md:text-3xl font-bold mb-2 text-white">
-            Wymagany Mapbox Token
-          </h2>
-          <p className="text-white/60 text-sm mb-6 leading-relaxed">
-            Aby wyświetlić kinowy globus 3D i satelitarną mapę torów wyścigowych, wklej swój darmowy klucz API Mapbox lub uzupełnij plik <code className="bg-white/10 px-1.5 py-0.5 rounded text-indigo-300">.env</code>.
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-400/30 text-[11px] font-bold text-emerald-300 uppercase tracking-wider mb-3">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Darmowy Tryb Satelitarny (Zero Logowania i Kart)</span>
+          </div>
+
+          <h1 className="text-2xl md:text-3xl font-extrabold mb-2 text-white">
+            Wybierz Tor Wyścigowy i Zaplanuj Padok
+          </h1>
+          <p className="text-white/70 text-xs md:text-sm mb-7 leading-relaxed max-w-md mx-auto">
+            Planuj rozmieszczenie zespołów wyścigowych na autentycznych zdjęciach satelitarnych wysokiej rozdzielczości (Esri/ArcGIS). Działa natychmiast dla każdego w zespole!
           </p>
 
-          <form onSubmit={handleSaveToken} className="space-y-4">
-            <input
-              type="text"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              placeholder="pk.eyJ1Ijoi..."
-              className="glass-input w-full font-mono text-xs py-3.5"
-              required
-            />
-            <button type="submit" className="glass-button-primary w-full py-3.5 text-sm font-semibold flex items-center justify-center gap-2">
-              <span>Uruchom Kinowy Globus 3D</span>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
-              </svg>
+          {/* Quick Presets Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <button
+              type="button"
+              onClick={() => navigate('/planner/demo')}
+              className="p-4 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-left transition-all hover:scale-[1.02] active:scale-98 shadow-lg group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-emerald-300">🟢 Tor Poznań</span>
+                  <span className="text-[10px] bg-emerald-400/20 text-emerald-200 px-1.5 py-0.5 rounded font-mono">PL</span>
+                </div>
+                <p className="text-[11px] font-semibold text-white">Padok Główny</p>
+              </div>
+              <p className="text-[10px] text-white/50 font-mono mt-2 pt-2 border-t border-white/10">250 × 180 metrów</p>
             </button>
-          </form>
 
-          <p className="mt-6 text-xs text-white/40">
-            Darmowy klucz wygenerujesz na <a href="https://account.mapbox.com/" target="_blank" rel="noreferrer" className="text-indigo-300 underline hover:text-indigo-200">account.mapbox.com</a>
-          </p>
+            <button
+              type="button"
+              onClick={() => navigate('/planner/silesia-ring')}
+              className="p-4 rounded-2xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/50 text-left transition-all hover:scale-[1.02] active:scale-98 shadow-lg group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-blue-300">🔵 Silesia Ring</span>
+                  <span className="text-[10px] bg-blue-400/20 text-blue-200 px-1.5 py-0.5 rounded font-mono">PL</span>
+                </div>
+                <p className="text-[11px] font-semibold text-white">Padok Główny</p>
+              </div>
+              <p className="text-[10px] text-white/50 font-mono mt-2 pt-2 border-t border-white/10">300 × 200 metrów</p>
+            </button>
 
-          {/* Opcja BEZ KLUCZA I BEZ KARTY (Esri World Imagery) */}
-          <div className="mt-8 pt-6 border-t border-white/15 text-left space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-300 uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>Darmowy Tryb Bez Kłopotów (Zero Kart i Rejestracji)</span>
-            </div>
-            <p className="text-xs text-white/70 leading-relaxed">
-              Nie chcesz podawać karty w Mapbox? Skorzystaj z darmowych map satelitarnych <strong>Esri World Imagery (ArcGIS)</strong> dla najpopularniejszych torów wyścigowych. Działa natychmiast, bez klucza API!
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={() => navigate('/planner/demo')}
-                className="px-3 py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
-              >
-                <span className="text-emerald-300 font-bold">🟢 Tor Poznań</span>
-                <span className="text-[10px] text-white/60">Padok Główny (250×180m)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/planner/silesia-ring')}
-                className="px-3 py-3 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
-              >
-                <span className="text-blue-300 font-bold">🔵 Silesia Ring</span>
-                <span className="text-[10px] text-white/60">Padok Główny (300×200m)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/planner/tor-modlin')}
-                className="px-3 py-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-xs font-semibold text-white shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
-              >
-                <span className="text-purple-300 font-bold">🟣 Tor Modlin</span>
-                <span className="text-[10px] text-white/60">Padok Sportowy (200×150m)</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/planner/tor-modlin')}
+              className="p-4 rounded-2xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/50 text-left transition-all hover:scale-[1.02] active:scale-98 shadow-lg group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-purple-300">🟣 Tor Modlin</span>
+                  <span className="text-[10px] bg-purple-400/20 text-purple-200 px-1.5 py-0.5 rounded font-mono">PL</span>
+                </div>
+                <p className="text-[11px] font-semibold text-white">Padok Sportowy</p>
+              </div>
+              <p className="text-[10px] text-white/50 font-mono mt-2 pt-2 border-t border-white/10">200 × 150 metrów</p>
+            </button>
+          </div>
+
+          {/* Collapsible Advanced Mapbox Section */}
+          <div className="pt-6 border-t border-white/15 text-left">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedTokenInput(!showAdvancedTokenInput)}
+              className="w-full flex items-center justify-between text-xs text-white/60 hover:text-white transition-colors py-1"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <span>⚙️ Opcje zaawansowane (Własny klucz Mapbox / Kinowy Globus 3D)</span>
+              </span>
+              <span className="text-indigo-300 text-[11px] underline">
+                {showAdvancedTokenInput ? 'Ukryj' : 'Rozwiń'}
+              </span>
+            </button>
+
+            {showAdvancedTokenInput && (
+              <div className="mt-4 p-4 rounded-2xl bg-black/40 border border-white/15 space-y-3.5 animate-fade-in text-xs">
+                <p className="text-white/70 leading-relaxed">
+                  Jeśli posiadasz własne konto na <a href="https://account.mapbox.com/" target="_blank" rel="noreferrer" className="text-indigo-300 underline hover:text-indigo-200">account.mapbox.com</a> i chcesz włączyć trójwymiarową animację lotu kamery z kosmosu, wklej poniżej swój token <code className="bg-white/10 px-1 rounded">pk.eyJ...</code>:
+                </p>
+                <form onSubmit={handleSaveToken} className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    placeholder="pk.eyJ1Ijoi..."
+                    className="glass-input flex-1 font-mono text-xs py-2.5"
+                    required
+                  />
+                  <button type="submit" className="glass-button-primary py-2.5 px-4 text-xs font-bold shrink-0">
+                    Uruchom Globus 3D
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       </div>
