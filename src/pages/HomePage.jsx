@@ -20,18 +20,22 @@ export const TRACK_DATABASE = [
 
 function HomePage() {
   const navigate = useNavigate();
-  const globeCanvasRef = useRef(null);
+  
+  // Kontenery dla Globusu 3D (globe.gl) oraz Mapy Satelitarnej (Leaflet)
+  const globeContainerRef = useRef(null);
+  const globeInstanceRef = useRef(null);
   const paddockMapContainerRef = useRef(null);
   const paddockMapInstanceRef = useRef(null);
   const viewfinderRef = useRef(null);
 
-  // Wyszukiwarka torów i adresów
+  // Wyszukiwarka na całej kuli ziemskiej
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(TRACK_DATABASE);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isGlobeReady, setIsGlobeReady] = useState(false);
 
-  // Stan lotu kamery i wybrany tor
+  // Stan lotu kamery i wybrany punkt na Ziemi
   const [isFlying, setIsFlying] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
@@ -40,21 +44,9 @@ function HomePage() {
   const [confirmedBounds, setConfirmedBounds] = useState(null);
   const [customEventName, setCustomEventName] = useState('');
   const [isSavingCustomEvent, setIsSavingCustomEvent] = useState(false);
+  const [mapLayerType, setMapLayerType] = useState('satellite'); // 'satellite' | 'street'
 
-  // Zmienne obrotu Globusu 3D w kosmosie
-  const globeStateRef = useRef({
-    rotX: 0.35,
-    rotY: -0.4,
-    targetRotX: 0.35,
-    targetRotY: -0.4,
-    zoom: 1,
-    targetZoom: 1,
-    isDragging: false,
-    lastX: 0,
-    lastY: 0,
-  });
-
-  // Wyszukiwanie na żywo (lokalna baza torów + darmowe geokodowanie OpenStreetMap Nominatim)
+  // Wyszukiwanie w czasie rzeczywistym (baza torów + darmowy geocoder OpenStreetMap Nominatim dla CAŁEGO ŚWIATA)
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults(TRACK_DATABASE);
@@ -68,13 +60,12 @@ function HomePage() {
 
     setSearchResults(localMatches);
 
-    // Jeśli szukamy czegoś spoza bazy, odpytaj darmowe API Nominatim (OpenStreetMap) po 400ms
     const timer = setTimeout(async () => {
       if (searchQuery.length >= 3) {
         setIsSearchingOnline(true);
         try {
           const resp = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=4`,
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`,
             { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
           );
           if (resp.ok) {
@@ -105,7 +96,56 @@ function HomePage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Efekt kinowego zejścia z kosmosu na dany adres toru
+  // Obsługa naciśnięcia klawisza Enter w wyszukiwarce lub kliknięcia przycisku Szukaj
+  const handleSearchEnter = async () => {
+    if (!searchQuery.trim()) return;
+    setShowDropdown(false);
+
+    const queryLower = searchQuery.toLowerCase();
+    const localMatch = TRACK_DATABASE.find(
+      t => t.name.toLowerCase().includes(queryLower) || t.city.toLowerCase().includes(queryLower)
+    );
+
+    if (localMatch) {
+      triggerCinematicZoomToTrack(localMatch);
+      return;
+    }
+
+    // Jeśli to nie tor z bazy, odpytaj natychmiast całą Ziemię przez API Nominatim
+    setIsSearchingOnline(true);
+    try {
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`,
+        { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.length > 0) {
+          const item = data[0];
+          const osmTrack = {
+            id: `osm-${item.place_id || Date.now()}`,
+            name: item.display_name.split(',')[0] + (item.display_name.split(',')[1] ? ` (${item.display_name.split(',')[1].trim()})` : ''),
+            city: item.display_name.split(',').slice(-2).join(', ').trim(),
+            coords: [parseFloat(item.lon), parseFloat(item.lat)],
+            w: 250,
+            h: 180,
+            bbox: `${parseFloat(item.lon)-0.003},${parseFloat(item.lat)-0.002},${parseFloat(item.lon)+0.003},${parseFloat(item.lat)+0.002}`,
+            isCustomAddress: true
+          };
+          triggerCinematicZoomToTrack(osmTrack);
+        } else {
+          alert('Nie znaleziono takiego miejsca na Ziemi. Spróbuj wpisać nazwę miasta, ulicy lub toru.');
+        }
+      }
+    } catch (err) {
+      console.error('Błąd wyszukiwania na Ziemi:', err);
+      alert('Wystąpił błąd podczas wyszukiwania adresu na kuli ziemskiej.');
+    } finally {
+      setIsSearchingOnline(false);
+    }
+  };
+
+  // Efekt kinowego zejścia z kosmosu (3D Globe) na dany punkt / adres na Ziemi
   const triggerCinematicZoomToTrack = (track) => {
     setShowDropdown(false);
     setSelectedTrack(track);
@@ -114,204 +154,121 @@ function HomePage() {
     setIsCustomFramingMode(false);
     setShowCustomBoundsModal(false);
 
-    // Wylicz kąty obrotu sfery tak, by wybrany tor znalazł się dokładnie na środku globusu
     const [lng, lat] = track.coords;
-    const targetY = -(lng * Math.PI) / 180 - Math.PI / 2;
-    const targetX = (lat * Math.PI) / 180;
 
-    globeStateRef.current.targetRotY = targetY;
-    globeStateRef.current.targetRotX = targetX;
-    globeStateRef.current.targetZoom = 8; // Kinowe przybliżenie ze sfery w kosmosie
+    // Jeśli globus w 3D jest aktywny, płynnie obróć go i przybliż do punktu docelowego w stylu Google Earth
+    if (globeInstanceRef.current && typeof globeInstanceRef.current.pointOfView === 'function') {
+      globeInstanceRef.current.pointOfView({ lat, lng, altitude: 0.12 }, 1200);
+    }
 
     setTimeout(() => {
       setIsFlying(false);
       setHasArrived(true);
-    }, 1200);
+    }, 1250);
   };
 
-  // Renderowanie kinowej Kuli Ziemskiej w kosmosie (60 FPS, Zero Mapboxa, Zero błędów 403)
+  // Inicjalizacja fotorealistycznej Kuli Ziemskiej 3D w stylu Google Earth (globe.gl + Three.js)
   useEffect(() => {
-    if (hasArrived) return;
-    const canvas = globeCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let animationFrameId;
-
-    // Generowanie gwiazd w przestrzeni kosmicznej
-    const stars = Array.from({ length: 220 }, () => ({
-      x: Math.random(),
-      y: Math.random(),
-      size: Math.random() * 1.8 + 0.4,
-      alpha: Math.random() * 0.8 + 0.2,
-      speed: (Math.random() - 0.5) * 0.002,
-    }));
-
-    let startTime = performance.now();
-
-    const render = (now) => {
-      const elapsed = (now - startTime) * 0.001;
-      const width = canvas.width = window.innerWidth;
-      const height = canvas.height = window.innerHeight;
-
-      // Płynna interpolacja (lerp) obrotu i przybliżenia
-      const state = globeStateRef.current;
-      if (!state.isDragging && !isFlying) {
-        state.targetRotY += 0.0012; // Delikatny auto-obrót ziemi w kosmosie
+    if (hasArrived) {
+      if (globeInstanceRef.current && typeof globeInstanceRef.current._destructor === 'function') {
+        try { globeInstanceRef.current._destructor(); } catch (e) {}
+        globeInstanceRef.current = null;
       }
-      state.rotX += (state.targetRotX - state.rotX) * 0.08;
-      state.rotY += (state.targetRotY - state.rotY) * 0.08;
-      state.zoom += (state.targetZoom - state.zoom) * 0.08;
+      return;
+    }
 
-      // Czyszczenie tła (kosmiczna głębia wszechświata)
-      ctx.fillStyle = '#040611';
-      ctx.fillRect(0, 0, width, height);
+    const initGlobe = () => {
+      if (!globeContainerRef.current || globeInstanceRef.current) return;
+      const Globe = window.Globe;
+      if (!Globe) return;
 
-      // Rysowanie i migotanie gwiazd
-      stars.forEach(star => {
-        const sx = star.x * width;
-        const sy = star.y * height;
-        const alpha = Math.min(1, Math.max(0.1, star.alpha + Math.sin(elapsed * 2 + star.x * 10) * 0.3));
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-        ctx.beginPath();
-        ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
-        ctx.fill();
-      });
+      globeContainerRef.current.innerHTML = '';
+      const globe = Globe()(globeContainerRef.current)
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+        .atmosphereColor('#3a228a')
+        .atmosphereAltitude(0.22)
+        .pointsData(TRACK_DATABASE)
+        .pointLat(d => d.coords[1])
+        .pointLng(d => d.coords[0])
+        .pointColor(() => '#ef4444')
+        .pointAltitude(0.06)
+        .pointRadius(0.65)
+        .pointsMerge(false)
+        .pointLabel(d => `
+          <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(99, 102, 241, 0.6); padding: 8px 12px; border-radius: 10px; color: white; font-family: sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none;">
+            <div style="font-weight: bold; font-size: 13px; color: #38bdf8;">🚀 ${d.name}</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${d.city}</div>
+            <div style="font-size: 10px; color: #10b981; margin-top: 4px; font-weight: 600;">Kliknij, aby zejść z kosmosu nad padok</div>
+          </div>
+        `)
+        .onPointClick(d => triggerCinematicZoomToTrack(d))
+        .onGlobeClick(({ lat, lng }) => {
+          // Kliknięcie w dowolny punkt Ziemi uruchamia lądowanie i możliwość kadrowania w tym miejscu!
+          const customEarthSpot = {
+            id: `earth-${lat.toFixed(4)}-${lng.toFixed(4)}`,
+            name: `Obszar: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
+            city: 'Wybrany punkt na Ziemi',
+            coords: [lng, lat],
+            w: 250,
+            h: 180,
+            bbox: `${lng-0.003},${lat-0.002},${lng+0.003},${lat+0.002}`,
+            isCustomAddress: true
+          };
+          triggerCinematicZoomToTrack(customEarthSpot);
+        });
 
-      // Parametry sfery Ziemi
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const baseRadius = Math.min(width, height) * 0.32 * state.zoom;
+      globe.controls().autoRotate = true;
+      globe.controls().autoRotateSpeed = 0.5;
+      globe.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.1 }, 1000);
 
-      if (baseRadius <= 0) {
-        animationFrameId = requestAnimationFrame(render);
-        return;
-      }
+      globeInstanceRef.current = globe;
+      setIsGlobeReady(true);
 
-      // Poświata atmosfery (zewnętrzna aura w kosmosie)
-      const atmosGrad = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.85, centerX, centerY, baseRadius * 1.25);
-      atmosGrad.addColorStop(0, 'rgba(59, 130, 246, 0.45)');
-      atmosGrad.addColorStop(0.6, 'rgba(79, 70, 229, 0.15)');
-      atmosGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = atmosGrad;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, baseRadius * 1.25, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Korpus Ziemi (sfera oceanów z głębokim cieniowaniem 3D)
-      const earthGrad = ctx.createRadialGradient(centerX - baseRadius * 0.3, centerY - baseRadius * 0.3, baseRadius * 0.1, centerX, centerY, baseRadius);
-      earthGrad.addColorStop(0, '#1e3a8a');
-      earthGrad.addColorStop(0.7, '#0f172a');
-      earthGrad.addColorStop(1, '#020617');
-      ctx.fillStyle = earthGrad;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Siatka kontynentalna i linie długości/szerokości geograficznej Ziemi w 3D
-      ctx.strokeStyle = 'rgba(99, 102, 241, 0.18)';
-      ctx.lineWidth = 1;
-
-      // Równoleżniki (lat)
-      for (let lat = -60; lat <= 60; lat += 30) {
-        ctx.beginPath();
-        const radLat = (lat * Math.PI) / 180;
-        const rLat = baseRadius * Math.cos(radLat);
-        const yOffset = -baseRadius * Math.sin(radLat) * Math.sin(state.rotX);
-        const scaleY = Math.abs(Math.cos(state.rotX)) * 0.28;
-        ctx.ellipse(centerX, centerY + yOffset, rLat, rLat * scaleY, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Południki (lng)
-      for (let lng = 0; lng < 360; lng += 30) {
-        ctx.beginPath();
-        const radLng = ((lng + state.rotY * (180 / Math.PI)) * Math.PI) / 180;
-        const xOffset = baseRadius * Math.sin(radLng);
-        const scaleX = Math.abs(Math.cos(radLng)) * 0.28;
-        ctx.ellipse(centerX + xOffset, centerY, baseRadius * scaleX, baseRadius, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Rysowanie świecących markerów wszystkich torów wyścigowych na sferze Ziemi
-      TRACK_DATABASE.forEach(track => {
-        const [tlng, tlat] = track.coords;
-        const phi = ((90 - tlat) * Math.PI) / 180;
-        const theta = ((tlng + 180) * Math.PI) / 180 + state.rotY;
-
-        // Obliczenia rzutu 3D na sferę
-        const x3d = baseRadius * Math.sin(phi) * Math.cos(theta);
-        const y3d = baseRadius * Math.cos(phi);
-        const z3d = baseRadius * Math.sin(phi) * Math.sin(theta);
-
-        // Rotacja po osi X (nachylenie sfery)
-        const cosX = Math.cos(state.rotX);
-        const sinX = Math.sin(state.rotX);
-        const yRot = y3d * cosX - z3d * sinX;
-        const zRot = y3d * sinX + z3d * cosX;
-
-        // Jeśli tor znajduje się po przedniej stronie sfery (zRot > -50), narysuj znacznik na globusie!
-        if (zRot > -baseRadius * 0.15) {
-          const screenX = centerX + x3d;
-          const screenY = centerY - yRot;
-          const markerScale = (zRot / baseRadius + 1) * 0.55;
-
-          // Pulsowanie neonowe tarczy
-          const pulse = (Math.sin(elapsed * 4) + 1) * 4 + 4;
-          ctx.fillStyle = selectedTrack?.id === track.id ? 'rgba(239, 68, 68, 0.35)' : 'rgba(99, 102, 241, 0.3)';
-          ctx.beginPath();
-          ctx.arc(screenX, screenY, (8 + pulse) * markerScale, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Kropka centralna
-          ctx.fillStyle = selectedTrack?.id === track.id ? '#ef4444' : '#38bdf8';
-          ctx.beginPath();
-          ctx.arc(screenX, screenY, 5 * markerScale, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Podpis toru
-          ctx.font = `bold ${Math.max(10, Math.floor(12 * markerScale))}px sans-serif`;
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.fillText(`🚀 ${track.name.split('—')[0].trim()}`, screenX + 10, screenY + 4);
+      // Dopasowanie rozmiaru przy zmianie rozmiaru okna
+      const handleResize = () => {
+        if (globeInstanceRef.current && globeContainerRef.current) {
+          globeInstanceRef.current.width(window.innerWidth).height(window.innerHeight);
         }
-      });
-
-      animationFrameId = requestAnimationFrame(render);
+      };
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
     };
 
-    animationFrameId = requestAnimationFrame(render);
+    // Automatyczne załadowanie Three.js i Globe.gl jeśli brakuje
+    if (!window.Globe) {
+      if (!document.getElementById('three-js')) {
+        const scriptThree = document.createElement('script');
+        scriptThree.id = 'three-js';
+        scriptThree.src = 'https://unpkg.com/three@0.160.0/build/three.min.js';
+        document.head.appendChild(scriptThree);
 
-    // Obsługa myszy do obracania globusu w kosmosie
-    const handleMouseDown = (e) => {
-      globeStateRef.current.isDragging = true;
-      globeStateRef.current.lastX = e.clientX;
-      globeStateRef.current.lastY = e.clientY;
-    };
-    const handleMouseMove = (e) => {
-      if (!globeStateRef.current.isDragging) return;
-      const dx = e.clientX - globeStateRef.current.lastX;
-      const dy = e.clientY - globeStateRef.current.lastY;
-      globeStateRef.current.targetRotY += dx * 0.005;
-      globeStateRef.current.targetRotX = Math.max(-1.2, Math.min(1.2, globeStateRef.current.targetRotX + dy * 0.005));
-      globeStateRef.current.lastX = e.clientX;
-      globeStateRef.current.lastY = e.clientY;
-    };
-    const handleMouseUp = () => {
-      globeStateRef.current.isDragging = false;
-    };
-
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+        scriptThree.onload = () => {
+          if (!document.getElementById('globe-gl-js')) {
+            const scriptGlobe = document.createElement('script');
+            scriptGlobe.id = 'globe-gl-js';
+            scriptGlobe.src = 'https://unpkg.com/globe.gl@2.32.0/dist/globe.gl.min.js';
+            scriptGlobe.onload = () => initGlobe();
+            document.head.appendChild(scriptGlobe);
+          } else {
+            initGlobe();
+          }
+        };
+      }
+    } else {
+      initGlobe();
+    }
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      if (globeInstanceRef.current && typeof globeInstanceRef.current._destructor === 'function') {
+        try { globeInstanceRef.current._destructor(); } catch (e) {}
+        globeInstanceRef.current = null;
+      }
     };
-  }, [hasArrived, isFlying, selectedTrack]);
+  }, [hasArrived]);
 
-  // Inicjalizacja w pełni interaktywnej mapy satelitarnej Esri po wylądowaniu nad torem (Możliwość swobodnego przesuwania kamery i zoomu)
+  // Inicjalizacja pełnej, uniwersalnej mapy satelitarnej Leaflet po zejściu na Ziemię (zabezpieczona przed różowym tłem / błędami 404)
   useEffect(() => {
     if (!hasArrived || !selectedTrack) {
       if (paddockMapInstanceRef.current) {
@@ -327,24 +284,39 @@ function HomePage() {
       if (!L) return;
 
       const [lng, lat] = selectedTrack.coords;
+      paddockMapContainerRef.current.innerHTML = '';
+      
       const map = L.map(paddockMapContainerRef.current, {
         center: [lat, lng],
-        zoom: selectedTrack.isCustomAddress ? 16 : 17,
+        zoom: selectedTrack.isCustomAddress ? 17 : 17,
         zoomControl: false,
         attributionControl: false,
       });
 
       paddockMapInstanceRef.current = map;
 
-      // Kafelki satelitarne Esri / ArcGIS World Imagery (100% darmowe, wysoka rozdzielczość, brak blokad CORS i kluczy API)
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-      }).addTo(map);
+      // Kafelki satelitarne Esri / ArcGIS World Imagery z maxNativeZoom: 17 aby uniknąć błędów 404 i różowego ekranu
+      const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 17,
+        maxZoom: 22,
+      });
+
+      // Kafelki drogowe OpenStreetMap z maxNativeZoom: 19
+      const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxNativeZoom: 19,
+        maxZoom: 22,
+      });
+
+      if (mapLayerType === 'street') {
+        streetLayer.addTo(map);
+      } else {
+        satLayer.addTo(map);
+      }
 
       // Kontrolki zoomu po prawej stronie
       L.control.zoom({ position: 'top-right' }).addTo(map);
 
-      // Pulsacyjny znacznik centrum toru
+      // Znacznik w centrum lądowania
       const markerHtml = `
         <div style="position: relative; display: flex; align-items: center; justify-content: center;">
           <div style="width: 36px; height: 36px; background: rgba(239, 68, 68, 0.35); border-radius: 50%; border: 2px solid #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.8);"></div>
@@ -358,10 +330,13 @@ function HomePage() {
         iconAnchor: [18, 18]
       });
       L.marker([lat, lng], { icon: customIcon }).addTo(map);
+
+      // Dwukrotne wywołanie invalidateSize gwarantuje, że mapa dokładnie wypełni ekran bez różowych/szarych dziur
+      setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+      setTimeout(() => { if (map) map.invalidateSize(); }, 400);
     };
 
     if (!window.L) {
-      // Automatyczne załadowanie biblioteki i stylów Leaflet z szybkiego CDN unpkg
       if (!document.getElementById('leaflet-css')) {
         const link = document.createElement('link');
         link.id = 'leaflet-css';
@@ -373,9 +348,7 @@ function HomePage() {
         const script = document.createElement('script');
         script.id = 'leaflet-js';
         script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = () => {
-          initMap();
-        };
+        script.onload = () => initMap();
         document.head.appendChild(script);
       }
     } else {
@@ -388,9 +361,9 @@ function HomePage() {
         paddockMapInstanceRef.current = null;
       }
     };
-  }, [hasArrived, selectedTrack]);
+  }, [hasArrived, selectedTrack, mapLayerType]);
 
-  // Obsługa zatwierdzenia własnego obszaru z celownika (odczyt z interaktywnej mapy Leaflet)
+  // Obsługa zatwierdzenia wykadrowanego obszaru na Ziemi
   const handleConfirmCustomBounds = () => {
     if (!selectedTrack) return;
     const map = paddockMapInstanceRef.current;
@@ -422,7 +395,7 @@ function HomePage() {
     setShowCustomBoundsModal(true);
   };
 
-  // Zapis własnego obszaru z celownika do Firestore
+  // Zapis wykadrowanego obszaru z dowolnego miejsca na Ziemi do Firestore i przejście do Plannera
   const handleSaveCustomEventAndOpen = async () => {
     if (!confirmedBounds || isSavingCustomEvent) return;
 
@@ -433,7 +406,7 @@ function HomePage() {
       const esriStaticUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
 
       const eventData = {
-        name: customEventName.trim() || 'Własny Padok',
+        name: customEventName.trim() || 'Własny Padok na Ziemi',
         imageUrl: esriStaticUrl,
         widthMeters: dimensions.widthMeters || 250,
         heightMeters: dimensions.heightMeters || 180,
@@ -452,46 +425,69 @@ function HomePage() {
   };
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-slate-950 font-sans select-none">
-      {/* Kula Ziemska 3D w kosmosie (Gdy jesteśmy przed lądowaniem na torze) */}
+    <div className="relative h-screen w-full overflow-hidden bg-[#040611] font-sans select-none">
+      {/* Fotorealistyczna Ziemia 3D (Google Earth Style - globe.gl) */}
       {!hasArrived && (
-        <canvas
-          ref={globeCanvasRef}
-          className="absolute inset-0 z-0 w-full h-full cursor-grab active:cursor-grabbing"
-        />
+        <div className="absolute inset-0 z-0 w-full h-full bg-[#040611] flex items-center justify-center">
+          <div ref={globeContainerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+          {!isGlobeReady && (
+            <div className="absolute z-10 flex flex-col items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-indigo-500/40">
+              <div className="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs text-indigo-300 font-mono font-bold">🌌 Ładowanie Ziemi 3D z kosmosu...</p>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Interaktywna mapa satelitarna Esri z lotu ptaka (Pełna swoboda ruchu kamery - Pan & Zoom) */}
+      {/* Interaktywna mapa satelitarna z lotu ptaka (Pan & Zoom na CAŁY ŚWIAT bez różowych błędów 404) */}
       {hasArrived && selectedTrack && (
         <div className="absolute inset-0 z-0 bg-slate-950 animate-fade-in">
           <div ref={paddockMapContainerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none z-[400]" />
+
+          {/* Przełącznik warstwy mapy: Satelita / Mapa drogowa */}
+          <div className="absolute top-5 right-16 z-[450] flex bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg">
+            <button
+              onClick={() => setMapLayerType('satellite')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                mapLayerType === 'satellite' ? 'bg-indigo-600 text-white shadow' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              🛰️ Satelita
+            </button>
+            <button
+              onClick={() => setMapLayerType('street')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                mapLayerType === 'street' ? 'bg-indigo-600 text-white shadow' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              🗺️ Mapa ulica
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Górny / Lewy Szklany Panel Katalogu i Wyszukiwarki Torów */}
+      {/* Górny / Lewy Szklany Panel Wyszukiwarki na Całą Ziemię */}
       <div className="absolute top-5 left-5 z-30 w-full max-w-sm sm:max-w-md px-2 pointer-events-auto">
         <div className="glass-panel-strong p-4 rounded-2xl shadow-2xl border-white/25 backdrop-blur-xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
-                </svg>
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                <span className="text-base">🌍</span>
               </div>
               <div>
                 <h1 className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
                   GLOBUS PADOK PLANNER
                 </h1>
                 <p className="text-[10px] text-indigo-300/80 font-mono">
-                  Zejście satelitarne 3D z kosmosu
+                  Google Earth & Satellite Explorer
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Search Input */}
+          {/* Wyszukiwarka z obsługą Enter */}
           <div className="relative">
             <input
               type="text"
@@ -500,25 +496,38 @@ function HomePage() {
                 setSearchQuery(e.target.value);
                 setShowDropdown(true);
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSearchEnter();
+                }
+              }}
               onFocus={() => setShowDropdown(true)}
-              placeholder="🔍 Wpisz nazwę toru lub adres (np. Tor Poznań)..."
-              className="w-full bg-black/50 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium"
+              placeholder="🔍 Wpisz dowolny adres na Ziemi i naciśnij Enter..."
+              className="w-full bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium pr-24 shadow-inner"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white text-xs p-1"
+                className="absolute right-20 top-1/2 -translate-y-1/2 text-white/50 hover:text-white text-xs p-1"
               >
                 ✕
               </button>
             )}
+            <button
+              onClick={handleSearchEnter}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all shadow-md flex items-center gap-1"
+            >
+              <span>Szukaj</span>
+              <span>🚀</span>
+            </button>
           </div>
 
-          {/* Rozwijana lista torów (Katalog w bazie + Wyniki) */}
+          {/* Lista sugestii / Wyników z całej Ziemi */}
           {(showDropdown || !selectedTrack || !hasArrived) && (
             <div className="mt-3 max-h-[38vh] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
               <div className="text-[10px] font-bold text-white/60 tracking-wider uppercase px-1 py-0.5 flex justify-between">
-                <span>{searchQuery ? 'Wyniki wyszukiwania:' : 'Baza Torów Wyścigowych:'}</span>
+                <span>{searchQuery ? 'Wyniki wyszukiwania na Ziemi:' : 'Sławne Tory / Kliknij na Globus:'}</span>
                 {isSearchingOnline && <span className="text-indigo-400 animate-pulse">Szukanie w świecie...</span>}
               </div>
 
@@ -547,8 +556,8 @@ function HomePage() {
               ))}
 
               {searchResults.length === 0 && !isSearchingOnline && (
-                <div className="text-center py-4 text-xs text-white/50">
-                  Nie znaleziono toru. Wpisz dowolną miejscowość, aby przybliżyć mapę z kosmosu!
+                <div className="text-center py-4 text-xs text-white/60 bg-black/30 rounded-xl border border-white/5 p-3">
+                  💡 Możesz wpisać dowolne miasto, ulicę lub współrzędne w okienku powyżej i nacisnąć <b>Enter</b>, albo po prostu <b>kliknąć w dowolny punkt na Ziemi 3D</b>!
                 </div>
               )}
             </div>
@@ -556,14 +565,14 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Cinematic Flight Status Banner (Zejście zoomowe z Księżyca) */}
+      {/* Status zejścia kinowego z kosmosu */}
       {isFlying && (
-        <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] pointer-events-none flex flex-col items-center justify-center animate-fade-in">
-          <div className="glass-panel-strong px-8 py-5 rounded-2xl flex items-center gap-4 border-indigo-400/40 shadow-[0_0_50px_rgba(99,102,241,0.3)]">
+        <div className="absolute inset-0 z-40 bg-black/50 backdrop-blur-[2px] pointer-events-none flex flex-col items-center justify-center animate-fade-in">
+          <div className="glass-panel-strong px-8 py-5 rounded-2xl flex items-center gap-4 border-indigo-400/40 shadow-[0_0_50px_rgba(99,102,241,0.4)]">
             <div className="w-9 h-9 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
             <div className="text-left">
               <h4 className="font-extrabold text-white text-base sm:text-lg tracking-wide">
-                Zejście z kosmosu na tor...
+                Zejście z kosmosu na Ziemię...
               </h4>
               <p className="text-xs text-indigo-300/90 font-mono">
                 {selectedTrack ? selectedTrack.name : 'Przybliżanie satelitarne...'}
@@ -573,19 +582,19 @@ function HomePage() {
         </div>
       )}
 
-      {/* Dolny Panel Akcji po wylądowaniu na torze */}
+      {/* Dolny Panel Akcji po wylądowaniu w dowolnym punkcie Ziemi */}
       {hasArrived && selectedTrack && !showCustomBoundsModal && !isCustomFramingMode && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 pointer-events-auto animate-slide-up">
           <div className="glass-panel-strong p-5 rounded-2xl border-indigo-400/50 shadow-[0_0_40px_rgba(79,46,229,0.35)] flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-center sm:text-left min-w-0">
               <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold mb-1">
-                ✔ CEL OSIĄGNIĘTY
+                ✔ CEL NA ZIEMI OSIĄGNIĘTY
               </span>
               <h3 className="text-sm sm:text-base font-extrabold text-white truncate">
                 {selectedTrack.name}
               </h3>
               <p className="text-xs text-white/60 font-mono">
-                Wymiary padoku: {selectedTrack.w} × {selectedTrack.h} m
+                Możesz przesuwać mapę i przybliżać w dowolne miejsce!
               </p>
             </div>
 
@@ -593,9 +602,11 @@ function HomePage() {
               <button
                 onClick={() => {
                   setHasArrived(false);
-                  globeStateRef.current.targetZoom = 1;
+                  if (globeInstanceRef.current && typeof globeInstanceRef.current.pointOfView === 'function') {
+                    globeInstanceRef.current.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.1 }, 1000);
+                  }
                 }}
-                title="Wróć do widoku kuli ziemskiej z kosmosu"
+                title="Wróć do widoku kuli ziemskiej w kosmosie"
                 className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white"
               >
                 🌍 Globus
@@ -603,9 +614,9 @@ function HomePage() {
               <button
                 onClick={() => setIsCustomFramingMode(true)}
                 title="Dopasuj ręcznie celownik obszaru na interaktywnej mapie"
-                className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white"
+                className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white font-bold text-emerald-300 border-emerald-400/40"
               >
-                📐 Kadruj
+                📐 Kadruj obszar
               </button>
               <button
                 onClick={() => {
@@ -625,13 +636,13 @@ function HomePage() {
         </div>
       )}
 
-      {/* Celownik HUD - gdy użytkownik włączy tryb kadrowania i przesuwa interaktywną mapę */}
+      {/* Celownik HUD - kadrowanie DOWOLNEGO obszaru na Ziemi */}
       {hasArrived && isCustomFramingMode && (
         <>
           <div className="absolute inset-0 z-[450] pointer-events-none flex items-center justify-center p-4">
             <div
               ref={viewfinderRef}
-              className="w-[85vw] max-w-[460px] h-[60vh] max-h-[520px] border-2 border-emerald-400/80 rounded-3xl bg-emerald-500/10 backdrop-blur-[1px] shadow-[0_0_60px_rgba(16,185,129,0.25)] flex flex-col justify-between p-5 relative animate-fade-in"
+              className="w-[85vw] max-w-[480px] h-[60vh] max-h-[520px] border-2 border-emerald-400/80 rounded-3xl bg-emerald-500/10 backdrop-blur-[1px] shadow-[0_0_60px_rgba(16,185,129,0.25)] flex flex-col justify-between p-5 relative animate-fade-in"
             >
               <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-300 rounded-tl-2xl -translate-x-1 -translate-y-1" />
               <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-300 rounded-tr-2xl translate-x-1 -translate-y-1" />
@@ -643,12 +654,12 @@ function HomePage() {
                 <div className="h-full w-[1px] bg-emerald-400 absolute" />
               </div>
 
-              <div className="self-center bg-black/60 px-3 py-1 rounded-full border border-emerald-400/40 text-[11px] font-mono text-emerald-300">
-                🎯 KADROWANIE OBSZARU PADOKU
+              <div className="self-center bg-black/75 px-3.5 py-1 rounded-full border border-emerald-400/50 text-[11px] font-mono text-emerald-300 shadow">
+                🎯 KADROWANIE DOWOLNEGO MIEJSCA NA ZIEMI
               </div>
 
-              <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/10 text-xs text-white/90">
-                Przesuń mapę tak, by padok był w centrum celownika
+              <div className="text-center bg-black/75 px-3.5 py-2 rounded-xl border border-white/15 text-xs text-white/90 shadow">
+                Przesuń mapę i dopasuj zoom tak, by Twój przyszły padok znalazł się dokładnie w centrum celownika
               </div>
             </div>
           </div>
@@ -662,18 +673,18 @@ function HomePage() {
             </button>
             <button
               onClick={handleConfirmCustomBounds}
-              className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2"
+              className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xl"
             >
-              <span>Zatwierdź ten kadrowany obszar</span>
+              <span>Zatwierdź ten obszar pod Padok</span>
               <span>✔</span>
             </button>
           </div>
         </>
       )}
 
-      {/* Modal Zapisywania Niestandardowego Kadru (Zadanie 4 - Haversine) */}
+      {/* Modal Potwierdzenia i Zapisywania Niestandardowego Kadru (Haversine) */}
       {showCustomBoundsModal && confirmedBounds && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in pointer-events-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in pointer-events-auto">
           <div className="glass-panel-strong w-full max-w-md p-6 sm:p-8 rounded-3xl border-white/30 shadow-2xl relative animate-slide-up">
             <button
               onClick={() => setShowCustomBoundsModal(false)}
@@ -686,7 +697,7 @@ function HomePage() {
               🏎️ Potwierdź Strefę Padoku
             </h3>
             <p className="text-xs text-white/60 mb-5">
-              Wymiary fizyczne obliczone automatycznie wzorem Haversine'a.
+              Wymiary fizyczne wyciętego obszaru obliczone automatycznie wzorem Haversine'a.
             </p>
 
             {/* Podsumowanie wymiarów */}
@@ -704,20 +715,20 @@ function HomePage() {
                 <span>{calculateBoundsDimensionsMeters(confirmedBounds).heightMeters} m</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-white/10 text-[10px] text-white/50">
-                <span>Darmowe tło satelitarne:</span>
-                <span className="text-emerald-400">Esri / ArcGIS High-Res</span>
+                <span>Źródło mapy:</span>
+                <span className="text-emerald-400">{mapLayerType === 'street' ? 'OpenStreetMap Street' : 'Esri / ArcGIS Satellite HD'}</span>
               </div>
             </div>
 
             <div className="mb-6">
               <label className="block text-xs font-semibold text-white/80 mb-2">
-                Nazwa Padoku / Wydarzenia:
+                Nazwa Padoku / Wydarzenia na Ziemi:
               </label>
               <input
                 type="text"
                 value={customEventName}
                 onChange={(e) => setCustomEventName(e.target.value)}
-                placeholder="np. Silesia Ring — Strefa VIP"
+                placeholder="np. Warszawa — Strefa Serwisowa"
                 className="glass-input w-full text-xs py-2.5"
               />
             </div>
