@@ -23,71 +23,109 @@ function PlannerPage() {
   useEffect(() => {
     if (!eventId) return;
 
-    // Nasłuchuj na dane eventu w czasie rzeczywistym i z cache offline
+    // Słownik wszystkich dostępnych torów i presetów bez klucza (Esri/ArcGIS)
+    const PRESET_TRACKS = {
+      'demo': { name: 'Tor Poznań — Padok Demo', w: 250, h: 180, bbox: '16.7942,52.4170,16.7982,52.4200' },
+      'tor-poznan': { name: 'Tor Poznań — Padok Główny', w: 250, h: 180, bbox: '16.7942,52.4170,16.7982,52.4200' },
+      'silesia-ring': { name: 'Silesia Ring — Padok Główny', w: 300, h: 200, bbox: '18.0930,50.5310,18.0990,50.5350' },
+      'tor-modlin': { name: 'Tor Modlin — Padok Sportowy', w: 200, h: 150, bbox: '20.6690,52.4630,20.6730,52.4660' },
+      'tor-lodz': { name: 'Tor Łódź — Ośrodek Doskonalenia', w: 180, h: 120, bbox: '19.5820,51.8740,19.5870,51.8770' },
+      'tor-jastrzab': { name: 'Autodrom Jastrząb — Padok', w: 220, h: 160, bbox: '20.9470,51.2460,20.9520,51.2490' },
+      'tor-krakow': { name: 'Moto Park Kraków — Padok', w: 160, h: 110, bbox: '20.0810,50.0410,20.0850,50.0440' },
+      'nurburgring': { name: 'Nürburgring GP — Grand Prix Paddock', w: 350, h: 250, bbox: '6.9420,50.3320,6.9490,50.3360' },
+      'spa': { name: 'Circuit de Spa-Francorchamps — F1 Paddock', w: 400, h: 250, bbox: '5.9700,50.4350,5.9770,50.4390' },
+      'monza': { name: 'Autodromo Nazionale Monza — Paddock', w: 380, h: 240, bbox: '9.2840,45.6170,9.2910,45.6210' },
+      'silverstone': { name: 'Silverstone Circuit — Wing Paddock', w: 420, h: 260, bbox: '-1.0210,52.0720,-1.0130,52.0760' },
+    };
+
+    const trackPreset = PRESET_TRACKS[eventId] || (eventId.startsWith('track-') ? {
+      name: `Tor Wyścigowy (${eventId})`,
+      w: 280,
+      h: 190,
+      bbox: '16.7942,52.4170,16.7982,52.4200'
+    } : null);
+
+    // Jeśli to tor z naszej bazy lub preset — od razu ładujemy go synchronicznie! (Brak blokady na ładowaniu!)
+    if (trackPreset) {
+      const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${trackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+      setEventData({
+        id: eventId,
+        name: trackPreset.name,
+        widthMeters: trackPreset.w,
+        heightMeters: trackPreset.h,
+        imageUrl: esriUrl,
+      });
+      setIsLoadingEvent(false);
+      if (!hasLoadedInitialTeams.current) {
+        hasLoadedInitialTeams.current = true;
+      }
+    }
+
+    // Bezpiecznik: w razie braku odpowiedzi z chmury po 1.5 sekundy zawsze zdejmujemy ekran ładowania
+    const timeoutId = setTimeout(() => {
+      setIsLoadingEvent((prev) => {
+        if (prev && !eventData) {
+          // Jeśli po 1.5s nadal nic nie pobrano z Firestore, ustaw domyślny tor z mapą satelitarną
+          const fallbackPreset = PRESET_TRACKS['tor-poznan'];
+          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+          setEventData({
+            id: eventId,
+            name: `Padok Toru (${eventId})`,
+            widthMeters: 250,
+            heightMeters: 180,
+            imageUrl: esriUrl,
+          });
+          return false;
+        }
+        return false;
+      });
+    }, 1500);
+
+    // W tle wciąż nasłuchujemy na ewentualne zapisane zespoły w chmurze Firestore
     const docRef = doc(db, 'events', eventId);
     const unsubscribe = onSnapshot(
       docRef,
       (docSnap) => {
+        clearTimeout(timeoutId);
         if (docSnap.exists()) {
           const data = { id: docSnap.id, ...docSnap.data() };
-          setEventData(data);
-          // Załaduj zespoły z bazy (Zadanie 7) tylko przy pierwszym wejściu / załadowaniu dokumentu
+          setEventData((prev) => ({
+            ...prev,
+            ...data,
+            // Jeśli obiekt w chmurze nie ma zdjęcia, użyj zdjęcia z presetu Esri
+            imageUrl: data.imageUrl || prev?.imageUrl || `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=16.7942,52.4170,16.7982,52.4200&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`,
+          }));
           if (!hasLoadedInitialTeams.current) {
             setPlacedTeams(data.teams || []);
             hasLoadedInitialTeams.current = true;
           }
           setErrorEvent(null);
-        } else if (eventId === 'demo' || eventId === 'silesia-ring' || eventId === 'tor-modlin') {
-          // Fallback dla szybkiego testu i darmowych map satelitarnych Esri/ArcGIS bez klucza i karty
-          const mapboxKey = import.meta.env.VITE_MAPBOX_TOKEN || localStorage.getItem('PADOK_MAPBOX_TOKEN');
-          
-          let presetName = 'Tor Poznań — Padok Demo (Darmowa Mapa Esri)';
-          let presetW = 250;
-          let presetH = 180;
-          let bbox = '16.7942,52.4170,16.7982,52.4200';
-          let mbCenter = '16.7962,52.4185';
-
-          if (eventId === 'silesia-ring') {
-            presetName = 'Silesia Ring — Padok Główny (Darmowa Mapa Esri)';
-            presetW = 300;
-            presetH = 200;
-            bbox = '18.0930,50.5310,18.0990,50.5350';
-            mbCenter = '18.0960,50.5330';
-          } else if (eventId === 'tor-modlin') {
-            presetName = 'Tor Modlin — Padok Sportowy (Darmowa Mapa Esri)';
-            presetW = 200;
-            presetH = 150;
-            bbox = '20.6690,52.4630,20.6730,52.4660';
-            mbCenter = '20.6710,52.4645';
-          }
-
-          const demoImageUrl = mapboxKey
-            ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${mbCenter},17,0,0/1024x1024?access_token=${mapboxKey}`
-            : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
-
+        } else if (!trackPreset) {
+          // Jeśli nie było w presetach ani w Firestore, ustaw domyślne parametry zamiast błędu
+          const fallbackPreset = PRESET_TRACKS['tor-poznan'];
+          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
           setEventData({
             id: eventId,
-            name: presetName,
-            widthMeters: presetW,
-            heightMeters: presetH,
-            imageUrl: demoImageUrl,
+            name: `Nowy Padok: ${eventId}`,
+            widthMeters: 250,
+            heightMeters: 180,
+            imageUrl: esriUrl,
           });
-          if (!hasLoadedInitialTeams.current) {
-            hasLoadedInitialTeams.current = true;
-          }
-        } else {
-          setErrorEvent('Nie znaleziono eventu o podanym ID.');
         }
         setIsLoadingEvent(false);
       },
       (err) => {
+        clearTimeout(timeoutId);
         console.error('Błąd pobierania eventu z Firestore:', err);
-        setErrorEvent('Błąd połączenia podczas pobierania danych eventu.');
+        // Jeśli błąd sieci na GitHub Pages, zdejmij loading i pozwól na działanie na lokalnym presecie
         setIsLoadingEvent(false);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, [eventId]);
 
   // ZADANIE 7: Ręczny zapis układu po kliknięciu przycisku "Zapisz układ"
