@@ -1,0 +1,180 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Base Styles ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Glassmorphism Utilities ===== */
+@layer components {
+  .glass-panel {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+
+  .glass-panel-strong {
+    @apply bg-white/15 backdrop-blur-xl border border-white/25 rounded-2xl;
+    box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-button {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl
+           px-6 py-3 font-medium text-white
+           transition-all duration-300 ease-out
+           hover:bg-white/20 hover:border-white/30 hover:shadow-glass-lg
+           active:scale-95;
+  }
+
+  .glass-button-primary {
+    @apply bg-indigo-500/30 backdrop-blur-lg border border-indigo-400/30 rounded-xl
+           px-6 py-3 font-medium text-white
+           transition-all duration-300 ease-out
+           hover:bg-indigo-500/50 hover:border-indigo-400/50 hover:shadow-glass-lg
+           active:scale-95;
+  }
+
+  .glass-input {
+    @apply bg-white/5 backdrop-blur-lg border border-white/15 rounded-xl
+           px-4 py-3 text-white placeholder-white/40
+           outline-none transition-all duration-300
+           focus:border-indigo-400/50 focus:bg-white/10 focus:ring-2 focus:ring-indigo-400/20;
+  }
+}
+
+/* ===== Background Mesh Gradient ===== */
+.bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+    linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ===== Mapbox & Geocoder Glassmorphic Overrides ===== */
+.mapboxgl-ctrl-geocoder {
+  background: rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+  color: #ffffff !important;
+  width: 100% !important;
+  max-width: 480px !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+
+.mapboxgl-ctrl-geocoder--input {
+  color: #ffffff !important;
+  padding: 12px 36px 12px 36px !important;
+  height: 48px !important;
+}
+
+.mapboxgl-ctrl-geocoder--input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.mapboxgl-ctrl-geocoder--icon {
+  fill: rgba(255, 255, 255, 0.7) !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-search {
+  top: 13px !important;
+  left: 12px !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--pin-right > * {
+  top: 13px !important;
+  right: 12px !important;
+}
+
+.mapboxgl-ctrl-geocoder--button {
+  background: transparent !important;
+}
+
+.suggestions {
+  background: rgba(15, 23, 42, 0.92) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.6) !important;
+  overflow: hidden !important;
+  margin-top: 8px !important;
+}
+
+.suggestions > li > a {
+  color: rgba(255, 255, 255, 0.8) !important;
+  padding: 10px 16px !important;
+  transition: all 0.2s ease !important;
+}
+
+.suggestions > li > a:hover,
+.suggestions > li.active > a {
+  background: rgba(99, 102, 241, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.mapboxgl-ctrl-geocoder--suggestion-title {
+  font-weight: 600 !important;
+}
+
+.mapboxgl-ctrl-geocoder--suggestion-address {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Hide default mapbox attribution during cinematic view if needed or style it */
+.mapboxgl-ctrl-attrib {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(4px) !important;
+  border-radius: 6px !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.mapboxgl-ctrl-attrib a {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
