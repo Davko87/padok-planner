@@ -199,8 +199,8 @@ function HomePage() {
   // If Mapbox token is missing, show sleek glass setup dialog
   if (!mapboxToken) {
     return (
-      <div className="relative h-full w-full flex items-center justify-center p-4 overflow-hidden bg-mesh">
-        <div className="glass-panel-strong p-8 md:p-11 max-w-xl w-full text-center animate-fade-in shadow-2xl border-white/30">
+      <div className="relative z-50 min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto bg-mesh pointer-events-auto">
+        <div className="relative z-50 glass-panel-strong p-8 md:p-11 max-w-xl w-full text-center animate-fade-in shadow-2xl border-white/30 my-6 pointer-events-auto">
           {/* Top Header Icon */}
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(16,185,129,0.25)]">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-9 h-9 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
