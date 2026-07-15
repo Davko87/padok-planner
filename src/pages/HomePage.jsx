@@ -21,6 +21,8 @@ export const TRACK_DATABASE = [
 function HomePage() {
   const navigate = useNavigate();
   const globeCanvasRef = useRef(null);
+  const paddockMapContainerRef = useRef(null);
+  const paddockMapInstanceRef = useRef(null);
   const viewfinderRef = useRef(null);
 
   // Wyszukiwarka torów i adresów
@@ -33,6 +35,7 @@ function HomePage() {
   const [isFlying, setIsFlying] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
+  const [isCustomFramingMode, setIsCustomFramingMode] = useState(false);
   const [showCustomBoundsModal, setShowCustomBoundsModal] = useState(false);
   const [confirmedBounds, setConfirmedBounds] = useState(null);
   const [customEventName, setCustomEventName] = useState('');
@@ -108,6 +111,7 @@ function HomePage() {
     setSelectedTrack(track);
     setIsFlying(true);
     setHasArrived(false);
+    setIsCustomFramingMode(false);
     setShowCustomBoundsModal(false);
 
     // Wylicz kąty obrotu sfery tak, by wybrany tor znalazł się dokładnie na środku globusu
@@ -307,16 +311,111 @@ function HomePage() {
     };
   }, [hasArrived, isFlying, selectedTrack]);
 
-  // Obsługa zatwierdzenia własnego obszaru z celownika
+  // Inicjalizacja w pełni interaktywnej mapy satelitarnej Esri po wylądowaniu nad torem (Możliwość swobodnego przesuwania kamery i zoomu)
+  useEffect(() => {
+    if (!hasArrived || !selectedTrack) {
+      if (paddockMapInstanceRef.current) {
+        paddockMapInstanceRef.current.remove();
+        paddockMapInstanceRef.current = null;
+      }
+      return;
+    }
+
+    const initMap = () => {
+      if (!paddockMapContainerRef.current || paddockMapInstanceRef.current) return;
+      const L = window.L;
+      if (!L) return;
+
+      const [lng, lat] = selectedTrack.coords;
+      const map = L.map(paddockMapContainerRef.current, {
+        center: [lat, lng],
+        zoom: selectedTrack.isCustomAddress ? 16 : 17,
+        zoomControl: false,
+        attributionControl: false,
+      });
+
+      paddockMapInstanceRef.current = map;
+
+      // Kafelki satelitarne Esri / ArcGIS World Imagery (100% darmowe, wysoka rozdzielczość, brak blokad CORS i kluczy API)
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Kontrolki zoomu po prawej stronie
+      L.control.zoom({ position: 'top-right' }).addTo(map);
+
+      // Pulsacyjny znacznik centrum toru
+      const markerHtml = `
+        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 36px; height: 36px; background: rgba(239, 68, 68, 0.35); border-radius: 50%; border: 2px solid #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.8);"></div>
+          <div style="position: absolute; width: 12px; height: 12px; background: #ef4444; border-radius: 50%;"></div>
+        </div>
+      `;
+      const customIcon = L.divIcon({
+        className: 'custom-track-marker',
+        html: markerHtml,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      L.marker([lat, lng], { icon: customIcon }).addTo(map);
+    };
+
+    if (!window.L) {
+      // Automatyczne załadowanie biblioteki i stylów Leaflet z szybkiego CDN unpkg
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link');
+        link.id = 'leaflet-css';
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+      if (!document.getElementById('leaflet-js')) {
+        const script = document.createElement('script');
+        script.id = 'leaflet-js';
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.onload = () => {
+          initMap();
+        };
+        document.head.appendChild(script);
+      }
+    } else {
+      initMap();
+    }
+
+    return () => {
+      if (paddockMapInstanceRef.current) {
+        paddockMapInstanceRef.current.remove();
+        paddockMapInstanceRef.current = null;
+      }
+    };
+  }, [hasArrived, selectedTrack]);
+
+  // Obsługa zatwierdzenia własnego obszaru z celownika (odczyt z interaktywnej mapy Leaflet)
   const handleConfirmCustomBounds = () => {
     if (!selectedTrack) return;
-    const coords = selectedTrack.coords;
-    const boundsObj = {
-      sw: [coords[0] - 0.003, coords[1] - 0.002],
-      ne: [coords[0] + 0.003, coords[1] + 0.002],
-      center: coords,
-      zoom: 17,
-    };
+    const map = paddockMapInstanceRef.current;
+
+    let boundsObj;
+    if (map) {
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const center = map.getCenter();
+      boundsObj = {
+        sw: [sw.lng, sw.lat],
+        ne: [ne.lng, ne.lat],
+        center: [center.lng, center.lat],
+        zoom: map.getZoom(),
+      };
+    } else {
+      const coords = selectedTrack.coords;
+      boundsObj = {
+        sw: [coords[0] - 0.003, coords[1] - 0.002],
+        ne: [coords[0] + 0.003, coords[1] + 0.002],
+        center: coords,
+        zoom: 17,
+      };
+    }
 
     setConfirmedBounds(boundsObj);
     setCustomEventName(selectedTrack.name);
@@ -362,15 +461,11 @@ function HomePage() {
         />
       )}
 
-      {/* Widok satelitarny z lotu ptaka (Esri High-Res Imagery) po lądowaniu nad wybranym torem */}
+      {/* Interaktywna mapa satelitarna Esri z lotu ptaka (Pełna swoboda ruchu kamery - Pan & Zoom) */}
       {hasArrived && selectedTrack && (
-        <div className="absolute inset-0 z-0 flex items-center justify-center bg-slate-950 animate-fade-in">
-          <img
-            src={`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${selectedTrack.bbox}&bboxSR=4326&size=1600,1000&imageSR=4326&format=png&f=image`}
-            alt={selectedTrack.name}
-            className="w-full h-full object-cover transition-transform duration-700 scale-100"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none" />
+        <div className="absolute inset-0 z-0 bg-slate-950 animate-fade-in">
+          <div ref={paddockMapContainerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none z-[400]" />
         </div>
       )}
 
@@ -479,7 +574,7 @@ function HomePage() {
       )}
 
       {/* Dolny Panel Akcji po wylądowaniu na torze */}
-      {hasArrived && selectedTrack && !showCustomBoundsModal && (
+      {hasArrived && selectedTrack && !showCustomBoundsModal && !isCustomFramingMode && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 pointer-events-auto animate-slide-up">
           <div className="glass-panel-strong p-5 rounded-2xl border-indigo-400/50 shadow-[0_0_40px_rgba(79,46,229,0.35)] flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-center sm:text-left min-w-0">
@@ -506,6 +601,13 @@ function HomePage() {
                 🌍 Globus
               </button>
               <button
+                onClick={() => setIsCustomFramingMode(true)}
+                title="Dopasuj ręcznie celownik obszaru na interaktywnej mapie"
+                className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white"
+              >
+                📐 Kadruj
+              </button>
+              <button
                 onClick={() => {
                   if (!selectedTrack.isCustomAddress) {
                     navigate(`/planner/${selectedTrack.id}`);
@@ -521,6 +623,52 @@ function HomePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Celownik HUD - gdy użytkownik włączy tryb kadrowania i przesuwa interaktywną mapę */}
+      {hasArrived && isCustomFramingMode && (
+        <>
+          <div className="absolute inset-0 z-[450] pointer-events-none flex items-center justify-center p-4">
+            <div
+              ref={viewfinderRef}
+              className="w-[85vw] max-w-[460px] h-[60vh] max-h-[520px] border-2 border-emerald-400/80 rounded-3xl bg-emerald-500/10 backdrop-blur-[1px] shadow-[0_0_60px_rgba(16,185,129,0.25)] flex flex-col justify-between p-5 relative animate-fade-in"
+            >
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-300 rounded-tl-2xl -translate-x-1 -translate-y-1" />
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-300 rounded-tr-2xl translate-x-1 -translate-y-1" />
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-300 rounded-bl-2xl -translate-x-1 translate-y-1" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-300 rounded-br-2xl translate-x-1 translate-y-1" />
+
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center opacity-60">
+                <div className="w-full h-[1px] bg-emerald-400 absolute" />
+                <div className="h-full w-[1px] bg-emerald-400 absolute" />
+              </div>
+
+              <div className="self-center bg-black/60 px-3 py-1 rounded-full border border-emerald-400/40 text-[11px] font-mono text-emerald-300">
+                🎯 KADROWANIE OBSZARU PADOKU
+              </div>
+
+              <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/10 text-xs text-white/90">
+                Przesuń mapę tak, by padok był w centrum celownika
+              </div>
+            </div>
+          </div>
+
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-3 pointer-events-auto animate-slide-up">
+            <button
+              onClick={() => setIsCustomFramingMode(false)}
+              className="glass-button py-3 px-5 text-xs text-white/80"
+            >
+              Anuluj kadrowanie
+            </button>
+            <button
+              onClick={handleConfirmCustomBounds}
+              className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2"
+            >
+              <span>Zatwierdź ten kadrowany obszar</span>
+              <span>✔</span>
+            </button>
+          </div>
+        </>
       )}
 
       {/* Modal Zapisywania Niestandardowego Kadru (Zadanie 4 - Haversine) */}
