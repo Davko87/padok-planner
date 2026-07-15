@@ -44,7 +44,9 @@ function HomePage() {
   const [confirmedBounds, setConfirmedBounds] = useState(null);
   const [customEventName, setCustomEventName] = useState('');
   const [isSavingCustomEvent, setIsSavingCustomEvent] = useState(false);
-  const [mapLayerType, setMapLayerType] = useState('satellite'); // 'satellite' | 'street'
+  
+  // Warstwa mapy: 'satellite-streets' (Google Hybryda z nazwami ulic) | 'satellite' (Esri HD) | 'street' (OSM)
+  const [mapLayerType, setMapLayerType] = useState('satellite-streets');
 
   // Wyszukiwanie w czasie rzeczywistym (baza torów + darmowy geocoder OpenStreetMap Nominatim dla CAŁEGO ŚWIATA)
   useEffect(() => {
@@ -154,6 +156,13 @@ function HomePage() {
     setIsCustomFramingMode(false);
     setShowCustomBoundsModal(false);
 
+    // Domyślnie dla adresów (np. ulic, domów) wybieramy widok satelitarny z nazwami ulic (hybrydowy)
+    if (track.isCustomAddress) {
+      setMapLayerType('satellite-streets');
+    } else {
+      setMapLayerType('satellite');
+    }
+
     const [lng, lat] = track.coords;
 
     // Jeśli globus w 3D jest aktywny, płynnie obróć go i przybliż do punktu docelowego w stylu Google Earth
@@ -205,7 +214,6 @@ function HomePage() {
         `)
         .onPointClick(d => triggerCinematicZoomToTrack(d))
         .onGlobeClick(({ lat, lng }) => {
-          // Kliknięcie w dowolny punkt Ziemi uruchamia lądowanie i możliwość kadrowania w tym miejscu!
           const customEarthSpot = {
             id: `earth-${lat.toFixed(4)}-${lng.toFixed(4)}`,
             name: `Obszar: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
@@ -226,7 +234,6 @@ function HomePage() {
       globeInstanceRef.current = globe;
       setIsGlobeReady(true);
 
-      // Dopasowanie rozmiaru przy zmianie rozmiaru okna
       const handleResize = () => {
         if (globeInstanceRef.current && globeContainerRef.current) {
           globeInstanceRef.current.width(window.innerWidth).height(window.innerHeight);
@@ -236,7 +243,6 @@ function HomePage() {
       return () => window.removeEventListener('resize', handleResize);
     };
 
-    // Automatyczne załadowanie Three.js i Globe.gl jeśli brakuje
     if (!window.Globe) {
       if (!document.getElementById('three-js')) {
         const scriptThree = document.createElement('script');
@@ -268,7 +274,7 @@ function HomePage() {
     };
   }, [hasArrived]);
 
-  // Inicjalizacja pełnej, uniwersalnej mapy satelitarnej Leaflet po zejściu na Ziemię (zabezpieczona przed różowym tłem / błędami 404)
+  // Inicjalizacja pełnej, uniwersalnej mapy satelitarnej Leaflet po zejściu na Ziemię (z gwarantowanym przeliczeniem wymiarów)
   useEffect(() => {
     if (!hasArrived || !selectedTrack) {
       if (paddockMapInstanceRef.current) {
@@ -288,20 +294,26 @@ function HomePage() {
       
       const map = L.map(paddockMapContainerRef.current, {
         center: [lat, lng],
-        zoom: selectedTrack.isCustomAddress ? 17 : 17,
+        zoom: selectedTrack.isCustomAddress ? 18 : 17,
         zoomControl: false,
         attributionControl: false,
       });
 
       paddockMapInstanceRef.current = map;
 
-      // Kafelki satelitarne Esri / ArcGIS World Imagery z maxNativeZoom: 17 aby uniknąć błędów 404 i różowego ekranu
-      const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      // Kafelki satelitarne Esri HD z maxNativeZoom: 17
+      const satEsriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 17,
         maxZoom: 22,
       });
 
-      // Kafelki drogowe OpenStreetMap z maxNativeZoom: 19
+      // Kafelki hybrydowe Google (Satelita + Nazwy ulic i numerów domów - idealne dla dokładnych adresów!)
+      const satGoogleHybridLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxNativeZoom: 20,
+        maxZoom: 22,
+      });
+
+      // Kafelki drogowe OpenStreetMap
       const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: 19,
         maxZoom: 22,
@@ -309,8 +321,10 @@ function HomePage() {
 
       if (mapLayerType === 'street') {
         streetLayer.addTo(map);
+      } else if (mapLayerType === 'satellite-streets') {
+        satGoogleHybridLayer.addTo(map);
       } else {
-        satLayer.addTo(map);
+        satEsriLayer.addTo(map);
       }
 
       // Kontrolki zoomu po prawej stronie
@@ -331,19 +345,19 @@ function HomePage() {
       });
       L.marker([lat, lng], { icon: customIcon }).addTo(map);
 
-      // Dwukrotne wywołanie invalidateSize gwarantuje, że mapa dokładnie wypełni ekran bez różowych/szarych dziur
-      setTimeout(() => { if (map) map.invalidateSize(); }, 100);
-      setTimeout(() => { if (map) map.invalidateSize(); }, 400);
+      // Wielokrotne wywołanie invalidateSize gwarantuje, że kontener mapy dokładnie wypełni ekran bez pustego, ciemnego tła
+      const forceResize = () => {
+        if (paddockMapInstanceRef.current) {
+          paddockMapInstanceRef.current.invalidateSize(true);
+        }
+      };
+      setTimeout(forceResize, 50);
+      setTimeout(forceResize, 150);
+      setTimeout(forceResize, 350);
+      setTimeout(forceResize, 600);
     };
 
     if (!window.L) {
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
       if (!document.getElementById('leaflet-js')) {
         const script = document.createElement('script');
         script.id = 'leaflet-js';
@@ -439,29 +453,40 @@ function HomePage() {
         </div>
       )}
 
-      {/* Interaktywna mapa satelitarna z lotu ptaka (Pan & Zoom na CAŁY ŚWIAT bez różowych błędów 404) */}
+      {/* Interaktywna mapa satelitarna z lotu ptaka (Pan & Zoom na CAŁY ŚWIAT) */}
       {hasArrived && selectedTrack && (
-        <div className="absolute inset-0 z-0 bg-slate-950 animate-fade-in">
-          <div ref={paddockMapContainerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none z-[400]" />
+        <div className="absolute inset-0 z-0 w-full h-full bg-slate-950 animate-fade-in">
+          <div ref={paddockMapContainerRef} className="absolute inset-0 z-10 w-full h-full cursor-grab active:cursor-grabbing" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none z-20" />
 
-          {/* Przełącznik warstwy mapy: Satelita / Mapa drogowa */}
-          <div className="absolute top-5 right-16 z-[450] flex bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg">
+          {/* Przełącznik warstwy mapy: Satelita+Ulice / Satelita Esri / Mapa drogowa */}
+          <div className="absolute top-5 right-16 z-30 flex bg-black/75 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg gap-1">
+            <button
+              onClick={() => setMapLayerType('satellite-streets')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                mapLayerType === 'satellite-streets' ? 'bg-indigo-600 text-white shadow' : 'text-white/70 hover:text-white'
+              }`}
+              title="Satelita z nazwami ulic i numerami domów (Google Hybryda)"
+            >
+              🛰️ Satelita + Ulice
+            </button>
             <button
               onClick={() => setMapLayerType('satellite')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 mapLayerType === 'satellite' ? 'bg-indigo-600 text-white shadow' : 'text-white/70 hover:text-white'
               }`}
+              title="Czysty satelita (Esri HD)"
             >
-              🛰️ Satelita
+              🛰️ Czysty Satelita
             </button>
             <button
               onClick={() => setMapLayerType('street')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 mapLayerType === 'street' ? 'bg-indigo-600 text-white shadow' : 'text-white/70 hover:text-white'
               }`}
+              title="Mapa drogowa OpenStreetMap"
             >
-              🗺️ Mapa ulica
+              🗺️ Mapa Ulic
             </button>
           </div>
         </div>
@@ -503,7 +528,7 @@ function HomePage() {
                 }
               }}
               onFocus={() => setShowDropdown(true)}
-              placeholder="🔍 Wpisz dowolny adres na Ziemi i naciśnij Enter..."
+              placeholder="🔍 Wpisz adres, miasto lub tor i naciśnij Enter..."
               className="w-full bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium pr-24 shadow-inner"
             />
             {searchQuery && (
@@ -716,7 +741,7 @@ function HomePage() {
               </div>
               <div className="flex justify-between pt-1 border-t border-white/10 text-[10px] text-white/50">
                 <span>Źródło mapy:</span>
-                <span className="text-emerald-400">{mapLayerType === 'street' ? 'OpenStreetMap Street' : 'Esri / ArcGIS Satellite HD'}</span>
+                <span className="text-emerald-400">{mapLayerType === 'street' ? 'OpenStreetMap Street' : 'Esri / Google Satellite HD'}</span>
               </div>
             </div>
 
