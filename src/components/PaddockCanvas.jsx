@@ -460,11 +460,22 @@ function PaddockCanvas({
             const pxWidth = team.widthMeters * pixelsPerMeter;
             const pxHeight = team.heightMeters * pixelsPerMeter;
             
-            // Eleganckie dobieranie czcionek bez nakładania się
-            const nameFontSize = Math.max(7, Math.min(15, Math.min(pxWidth * 0.22, pxHeight * 0.15)));
-            const dimFontSize = Math.max(6, Math.min(12, Math.min(pxWidth * 0.18, pxHeight * 0.12)));
-            const topPad = Math.max(3, pxHeight * 0.05);
-            const botPad = Math.max(3, pxHeight * 0.05);
+            // Eleganckie dobieranie czcionek bez nakładania się i bez rozrywania liter (wrap="none")
+            const nameLen = Math.max(1, (team.name || '').length);
+            const dimText = `${team.widthMeters}×${team.heightMeters}m`;
+            const dimLen = Math.max(1, dimText.length);
+
+            // Skalowanie do szerokości prostokąta, by tekst mieścił się w 1 linii bez zwijania
+            const maxNameSizeByWidth = (pxWidth - 4) / (nameLen * 0.62);
+            const maxDimSizeByWidth = (pxWidth - 4) / (dimLen * 0.58);
+
+            const nameFontSize = Math.max(8, Math.min(16, Math.min(pxHeight * 0.2, maxNameSizeByWidth)));
+            const dimFontSize = Math.max(7, Math.min(13, Math.min(pxHeight * 0.16, maxDimSizeByWidth)));
+
+            const totalTextHeight = nameFontSize + dimFontSize;
+            const availableGap = pxHeight - totalTextHeight;
+            const topPad = Math.max(3, Math.min(availableGap * 0.35, pxHeight * 0.08));
+            const botPad = Math.max(3, Math.min(availableGap * 0.35, pxHeight * 0.08));
 
             return (
               <Group
@@ -516,32 +527,33 @@ function PaddockCanvas({
                   shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
                 />
 
-                {/* Nazwa teamu - u góry prostokąta, mniejsza i elegancka */}
+                {/* Nazwa teamu - u góry prostokąta, JEDNA linia (wrap="none") */}
                 <Text
                   text={team.name}
-                  x={2}
+                  x={0}
                   y={topPad}
-                  width={Math.max(10, pxWidth - 4)}
+                  width={pxWidth}
                   align="center"
                   fill="#ffffff"
                   fontSize={nameFontSize}
                   fontFamily="Inter, system-ui, sans-serif"
                   fontStyle="bold"
-                  wrap="word"
+                  wrap="none"
                   listening={false}
                 />
 
-                {/* Wymiary fizyczne w metrach - na samym dole prostokąta */}
+                {/* Wymiary fizyczne w metrach - na dole prostokąta, JEDNA linia (wrap="none") */}
                 <Text
-                  text={`${team.widthMeters}×${team.heightMeters}m`}
-                  x={2}
-                  y={pxHeight - dimFontSize - botPad - 2}
-                  width={Math.max(10, pxWidth - 4)}
+                  text={dimText}
+                  x={0}
+                  y={pxHeight - dimFontSize - botPad}
+                  width={pxWidth}
                   align="center"
-                  fill="rgba(255, 255, 255, 0.85)"
+                  fill="rgba(255, 255, 255, 0.9)"
                   fontSize={dimFontSize}
                   fontFamily="monospace"
                   fontStyle="bold"
+                  wrap="none"
                   listening={false}
                 />
               </Group>
