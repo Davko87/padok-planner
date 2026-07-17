@@ -30,7 +30,7 @@ body {
 /* ===== Glassmorphism Utilities (Dark Smoked Glass for High Contrast) ===== */
 @layer components {
   .glass-panel {
-    background: rgba(8, 13, 26, 0.62) !important;
+    background: rgba(8, 13, 26, 0.45) !important;
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
     border: 1px solid rgba(255, 255, 255, 0.20) !important;
@@ -39,7 +39,7 @@ body {
   }
 
   .glass-panel-strong {
-    background: rgba(6, 10, 20, 0.70) !important;
+    background: rgba(6, 10, 20, 0.52) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     border: 1px solid rgba(255, 255, 255, 0.25) !important;
@@ -48,14 +48,14 @@ body {
   }
 
   .glass-button {
-    background: rgba(15, 23, 42, 0.65) !important;
+    background: rgba(15, 23, 42, 0.45) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
     @apply border border-white/20 rounded-xl px-6 py-3 font-medium text-white transition-all duration-300 ease-out hover:border-white/35 hover:shadow-glass-lg active:scale-95;
   }
 
   .glass-button:hover {
-    background: rgba(30, 41, 59, 0.78) !important;
+    background: rgba(30, 41, 59, 0.65) !important;
   }
 
   .glass-button-primary {
