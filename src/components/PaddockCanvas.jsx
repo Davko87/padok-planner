@@ -23,9 +23,37 @@ function PaddockCanvas({
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanMode, setIsPanMode] = useState(false);
 
-  // Załaduj obraz satelitarny w tle
+  // Załaduj obraz satelitarny w tle z obsługą automatycznego ponawiania i fallbacks (bez blokady CORS)
   const defaultFallbackUrl = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/16.7962,52.4185,17,0,0/1024x1024?access_token=' + (import.meta.env.VITE_MAPBOX_TOKEN || '');
-  const [bgImage, bgStatus] = useImage(eventData?.imageUrl || defaultFallbackUrl, 'anonymous');
+  
+  const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
+  const [useAnonymous, setUseAnonymous] = useState(true);
+
+  // Aktualizuj URL obrazu po zmianie eventData
+  useEffect(() => {
+    if (eventData?.imageUrl) {
+      setCurrentImageUrl(eventData.imageUrl);
+      setUseAnonymous(true);
+    }
+  }, [eventData?.imageUrl]);
+
+  const [bgImage, bgStatus] = useImage(currentImageUrl, useAnonymous ? 'anonymous' : undefined);
+
+  // W razie blokady CORS na serwerze Esri/ArcGIS (bgStatus === 'failed') natychmiast załaduj bez wymogu CORS lub w bezpiecznej rozdzielczości!
+  useEffect(() => {
+    if (bgStatus === 'failed') {
+      if (useAnonymous) {
+        console.warn('Serwer obrazów zablokował CORS (anonymous). Ponawianie bez wymogu CORS...');
+        setUseAnonymous(false);
+      } else if (currentImageUrl.includes('size=2048,2048')) {
+        console.warn('Serwer Esri odrzucił rozmiar 2048x2048. Ponawianie w rozdzielczości 1280x1280...');
+        setCurrentImageUrl(currentImageUrl.replace('size=2048,2048', 'size=1280,1280'));
+      } else if (currentImageUrl !== defaultFallbackUrl) {
+        console.warn('Pobieranie obrazu Esri nie powiodło się. Przełączanie na warstwę rezerwową...');
+        setCurrentImageUrl(defaultFallbackUrl);
+      }
+    }
+  }, [bgStatus, useAnonymous, currentImageUrl, defaultFallbackUrl]);
 
   // Oblicz pixelsPerMeter tak, aby szerokość obrazu w pikselach odpowiadała fizycznej szerokości w metrach z Firestore
   const imgWidth = bgImage ? bgImage.width : 1024;
@@ -291,6 +319,19 @@ function PaddockCanvas({
       onDrop={handleDrop}
       className="absolute inset-0 w-full h-full bg-slate-950 overflow-hidden select-none"
     >
+      {/* Baner ładowania lub ponawiania pobierania tła satelitarnego */}
+      {bgStatus === 'loading' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm pointer-events-none animate-fade-in">
+          <div className="glass-panel-strong px-8 py-5 rounded-2xl flex items-center gap-4 border-indigo-400/40 shadow-2xl">
+            <div className="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
+            <div>
+              <h4 className="font-extrabold text-white text-sm sm:text-base">⏳ Pobieranie zrzutu satelitarnego (Ultra HD)...</h4>
+              <p className="text-xs text-indigo-300 font-mono">Generowanie tła roboczego z wykadrowanego obszaru</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* react-konva Stage */}
       <Stage
         ref={stageRef}
