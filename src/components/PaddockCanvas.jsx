@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Transformer } from 'react-konva';
 import useImage from 'use-image';
 import DPadControls from './DPadControls.jsx';
+import { checkTeamCollidesWithOthers, findCleanSpotForNode } from '../lib/geoUtils.js';
 
 function PaddockCanvas({
   eventData,
@@ -9,11 +10,34 @@ function PaddockCanvas({
   onUpdateTeams,
   selectedTeamId,
   onSelectTeam,
+  allowCollisions = false,
+  onToggleCollisions,
 }) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const trRef = useRef(null);
   const selectedNodeRefs = useRef({});
+  const lastValidCoordsRef = useRef({});
+
+  const [collidingTeamIds, setCollidingTeamIds] = useState([]);
+  const [collisionToast, setCollisionToast] = useState('');
+
+  // Zapisuj ostatnie prawidłowe (bezkolizyjne) współrzędne dla naczep
+  useEffect(() => {
+    placedTeams.forEach((t) => {
+      if (!lastValidCoordsRef.current[t.id]) {
+        lastValidCoordsRef.current[t.id] = { x: t.x, y: t.y, rotation: t.rotation || 0 };
+      }
+    });
+  }, [placedTeams]);
+
+  // Automatyczne ukrywanie komunikatu o kolizji
+  useEffect(() => {
+    if (collisionToast) {
+      const timer = setTimeout(() => setCollisionToast(''), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [collisionToast]);
 
   // Wymiary okna canvasu
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -159,7 +183,7 @@ function PaddockCanvas({
       const widthMeters = template.width || template.widthMeters || 10;
       const heightMeters = template.length || template.heightMeters || 15;
 
-      const newTeamNode = {
+      let newTeamNode = {
         id: 'team_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         templateId: template.id || 'custom',
         name: template.name || 'Zespól Wyścigowy',
@@ -170,6 +194,10 @@ function PaddockCanvas({
         y: localPoint.y - (heightMeters * pixelsPerMeter) / 2,
         rotation: 0,
       };
+
+      if (!allowCollisions) {
+        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
+      }
 
       const newTeamsList = [...placedTeams, newTeamNode];
       onUpdateTeams && onUpdateTeams(newTeamsList);
@@ -188,72 +216,116 @@ function PaddockCanvas({
 
   // Obsługa przeciągania pojedynczego teamu po canvasie
   const handleTeamDragEnd = (index, e) => {
-    const updated = [...placedTeams];
-    updated[index] = {
-      ...updated[index],
+    const team = placedTeams[index];
+    const candidate = {
+      ...team,
       x: e.target.x(),
       y: e.target.y(),
     };
+
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
+
+    if (!allowCollisions && collidedId) {
+      // BLOKADA: przywróć ostatnią prawidłową pozycję
+      const lastValid = lastValidCoordsRef.current[team.id] || { x: team.x, y: team.y, rotation: team.rotation || 0 };
+      e.target.x(lastValid.x);
+      e.target.y(lastValid.y);
+      e.target.rotation(lastValid.rotation || 0);
+      setCollidingTeamIds([]);
+      setCollisionToast('Kolizja zablokowana! Namioty nie mogą na siebie nachodzić.');
+      return;
+    }
+
+    setCollidingTeamIds([]);
+    lastValidCoordsRef.current[team.id] = { x: candidate.x, y: candidate.y, rotation: candidate.rotation || 0 };
+
+    const updated = [...placedTeams];
+    updated[index] = candidate;
     onUpdateTeams && onUpdateTeams(updated);
   };
 
-  // ZADANIE 6 & 8: Obsługa końca transformacji (obrót z rogów bez skracania/wydłużania metrażu teamu!)
+  // ZADANIE 6 & 8 & 9: Obsługa końca transformacji (obrót z rogów z wykrywaniem kolizji!)
   const handleTransformEnd = () => {
     if (!selectedTeamId || !trRef.current) return;
     const node = selectedNodeRefs.current[selectedTeamId];
     if (!node) return;
 
-    // Ponieważ resizeEnabled={false}, skalowanie jest wyłączone, a wymiary w metrach pozostają nienaruszone (sztywny metraż)
     node.scaleX(1);
     node.scaleY(1);
 
-    const updated = placedTeams.map((t) => {
-      if (t.id === selectedTeamId) {
-        return {
-          ...t,
-          x: node.x(),
-          y: node.y(),
-          rotation: Math.round(node.rotation() * 10) / 10, // Precyzyjny kąt obrotu
-          // widthMeters i heightMeters pozostają bez zmian - zmieniasz je tylko w katalogu!
-        };
-      }
-      return t;
-    });
+    const target = placedTeams.find((t) => t.id === selectedTeamId);
+    if (!target) return;
 
+    const candidate = {
+      ...target,
+      x: node.x(),
+      y: node.y(),
+      rotation: Math.round(node.rotation() * 10) / 10,
+    };
+
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    if (!allowCollisions && collidedId) {
+      const lastValid = lastValidCoordsRef.current[selectedTeamId] || { x: target.x, y: target.y, rotation: target.rotation || 0 };
+      node.x(lastValid.x);
+      node.y(lastValid.y);
+      node.rotation(lastValid.rotation || 0);
+      setCollidingTeamIds([]);
+      setCollisionToast('Obrót zablokowany! Namiot zahacza o inny zespół.');
+      return;
+    }
+
+    setCollidingTeamIds([]);
+    lastValidCoordsRef.current[selectedTeamId] = { x: candidate.x, y: candidate.y, rotation: candidate.rotation || 0 };
+
+    const updated = placedTeams.map((t) => (t.id === selectedTeamId ? candidate : t));
     onUpdateTeams && onUpdateTeams(updated);
   };
 
-  // ZADANIE 6: Obsługa precyzyjnych przesunięć z D-Pad (dokładnie o skok np. 1m w metrach -> pikselach)
+  // ZADANIE 6 & 9: Obsługa precyzyjnych przesunięć z D-Pad (z kontrolą kolizji)
   const handleDPadMove = (dxMeters, dyMeters) => {
     if (!selectedTeamId) return;
     const dxPx = dxMeters * pixelsPerMeter;
     const dyPx = dyMeters * pixelsPerMeter;
 
-    const updated = placedTeams.map((t) => {
-      if (t.id === selectedTeamId) {
-        return {
-          ...t,
-          x: t.x + dxPx,
-          y: t.y + dyPx,
-        };
-      }
-      return t;
-    });
+    const target = placedTeams.find((t) => t.id === selectedTeamId);
+    if (!target) return;
+
+    const candidate = {
+      ...target,
+      x: target.x + dxPx,
+      y: target.y + dyPx,
+    };
+
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    if (!allowCollisions && collidedId) {
+      setCollisionToast('Przesunięcie zablokowane! Naczepa nachodzi na sąsiedni zespół.');
+      return;
+    }
+
+    lastValidCoordsRef.current[selectedTeamId] = { x: candidate.x, y: candidate.y, rotation: candidate.rotation || 0 };
+    const updated = placedTeams.map((t) => (t.id === selectedTeamId ? candidate : t));
     onUpdateTeams && onUpdateTeams(updated);
   };
 
-  // ZADANIE 6: Obsługa obrotów o 90° z D-Pad
+  // ZADANIE 6 & 9: Obsługa obrotów z D-Pad (z kontrolą kolizji)
   const handleDPadRotate = (deltaAngle) => {
     if (!selectedTeamId) return;
-    const updated = placedTeams.map((t) => {
-      if (t.id === selectedTeamId) {
-        return {
-          ...t,
-          rotation: (t.rotation + deltaAngle + 360) % 360,
-        };
-      }
-      return t;
-    });
+    const target = placedTeams.find((t) => t.id === selectedTeamId);
+    if (!target) return;
+
+    const candidate = {
+      ...target,
+      rotation: (target.rotation + deltaAngle + 360) % 360,
+    };
+
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    if (!allowCollisions && collidedId) {
+      setCollisionToast('Obrót zablokowany! Naczepa zahacza o sąsiedni zespół.');
+      return;
+    }
+
+    lastValidCoordsRef.current[selectedTeamId] = { x: candidate.x, y: candidate.y, rotation: candidate.rotation || 0 };
+    const updated = placedTeams.map((t) => (t.id === selectedTeamId ? candidate : t));
     onUpdateTeams && onUpdateTeams(updated);
   };
 
@@ -369,6 +441,7 @@ function PaddockCanvas({
           {/* 2. Zespoły umieszczone na torze (Team Nodes) */}
           {placedTeams.map((team, index) => {
             const isSelected = selectedTeamId === team.id;
+            const isColliding = collidingTeamIds.includes(team.id);
             const pxWidth = team.widthMeters * pixelsPerMeter;
             const pxHeight = team.heightMeters * pixelsPerMeter;
             const fontSize = Math.max(10, Math.min(18, Math.min(pxWidth, pxHeight) * 0.25));
@@ -395,19 +468,32 @@ function PaddockCanvas({
                   e.cancelBubble = true;
                   onSelectTeam && onSelectTeam(team.id);
                 }}
+                onDragMove={(e) => {
+                  const candidate = {
+                    ...team,
+                    x: e.target.x(),
+                    y: e.target.y(),
+                  };
+                  const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
+                  if (collidedId) {
+                    setCollidingTeamIds([team.id, collidedId]);
+                  } else if (collidingTeamIds.length > 0) {
+                    setCollidingTeamIds([]);
+                  }
+                }}
                 onDragEnd={(e) => handleTeamDragEnd(index, e)}
               >
                 {/* Prostokąt namiotu / strefy teamu */}
                 <Rect
                   width={pxWidth}
                   height={pxHeight}
-                  fill={team.color ? `${team.color}DF` : '#4f46e5DF'}
-                  stroke={isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.4)'}
-                  strokeWidth={isSelected ? Math.max(2, 3 / stageScale) : Math.max(1, 1.5 / stageScale)}
+                  fill={isColliding ? '#ef4444EE' : team.color ? `${team.color}DF` : '#4f46e5DF'}
+                  stroke={isColliding ? '#ff0000' : isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.4)'}
+                  strokeWidth={isColliding ? Math.max(3, 4 / stageScale) : isSelected ? Math.max(2, 3 / stageScale) : Math.max(1, 1.5 / stageScale)}
                   cornerRadius={Math.max(2, 4 * (pixelsPerMeter / 5))}
-                  shadowColor={isSelected ? '#10B981' : '#000000'}
-                  shadowBlur={isSelected ? 18 : 6}
-                  shadowOpacity={isSelected ? 0.9 : 0.5}
+                  shadowColor={isColliding ? '#ff0000' : isSelected ? '#10B981' : '#000000'}
+                  shadowBlur={isColliding ? 24 : isSelected ? 18 : 6}
+                  shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
                 />
 
                 {/* Nazwa teamu */}
@@ -511,7 +597,30 @@ function PaddockCanvas({
         >
           <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
         </button>
+
+        {/* Toggle Kolizji (Zadanie 9) */}
+        {onToggleCollisions && (
+          <button
+            onClick={onToggleCollisions}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all shadow-glass flex items-center gap-2 ${
+              allowCollisions
+                ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
+                : 'bg-emerald-600/80 border border-emerald-400 text-white'
+            }`}
+            title="Przełącz wykrywanie i blokowanie kolizji między namiotami"
+          >
+            <span>{allowCollisions ? '⚠️ Nakładanie: DOZWOLONE' : '🛡️ Nakładanie: BLOKOWANE'}</span>
+          </button>
+        )}
       </div>
+
+      {/* Toast ostrzegający o kolizji */}
+      {collisionToast && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-red-600/95 backdrop-blur-md border border-red-400 text-white text-xs sm:text-sm font-bold shadow-2xl flex items-center gap-2.5 animate-bounce">
+          <span className="text-lg">🛑</span>
+          <span>{collisionToast}</span>
+        </div>
+      )}
 
       {/* HUD info o skali */}
       <div className="absolute top-16 right-4 md:right-80 z-30 hidden sm:flex items-center gap-3 glass-panel px-4 py-2 border-white/15 text-xs text-white/70 font-mono">

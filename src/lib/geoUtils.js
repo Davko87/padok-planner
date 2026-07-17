@@ -104,3 +104,136 @@ export function buildStaticMapUrl(bounds, googleApiKey, mapboxToken) {
   return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
 }
 
+/**
+ * Oblicza 4 narożniki obróconego prostokąta w globalnych współrzędnych płótna.
+ *
+ * @param {{ x: number, y: number, widthPx: number, heightPx: number, rotationDegrees?: number }} rect
+ * @returns {Array<{ x: number, y: number }>}
+ */
+export function getOrientedRectCorners({ x, y, widthPx, heightPx, rotationDegrees = 0 }) {
+  const rad = (rotationDegrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  return [
+    { x, y },
+    { x: x + widthPx * cos, y: y + widthPx * sin },
+    { x: x + widthPx * cos - heightPx * sin, y: y + widthPx * sin + heightPx * cos },
+    { x: x - heightPx * sin, y: y + heightPx * cos },
+  ];
+}
+
+/**
+ * Sprawdza kolizję (nakładanie się) dwóch obróconych prostokątów przy pomocy Separating Axis Theorem (SAT).
+ * Pozwala na delikatny styk krawędzi (margines 0.5px bez wyzwalania alarmu kolizji).
+ *
+ * @param {object} rectA
+ * @param {object} rectB
+ * @returns {boolean}
+ */
+export function checkOrientedRectsCollide(rectA, rectB) {
+  const cornersA = getOrientedRectCorners(rectA);
+  const cornersB = getOrientedRectCorners(rectB);
+
+  const getAxes = (corners) => {
+    const axes = [];
+    for (let i = 0; i < 2; i++) {
+      const p1 = corners[i];
+      const p2 = corners[(i + 1) % 4];
+      const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
+      const length = Math.hypot(edge.x, edge.y);
+      if (length > 0) {
+        axes.push({ x: -edge.y / length, y: edge.x / length });
+      }
+    }
+    return axes;
+  };
+
+  const axes = [...getAxes(cornersA), ...getAxes(cornersB)];
+
+  for (const axis of axes) {
+    let minA = Infinity;
+    let maxA = -Infinity;
+    for (const p of cornersA) {
+      const proj = p.x * axis.x + p.y * axis.y;
+      if (proj < minA) minA = proj;
+      if (proj > maxA) maxA = proj;
+    }
+
+    let minB = Infinity;
+    let maxB = -Infinity;
+    for (const p of cornersB) {
+      const proj = p.x * axis.x + p.y * axis.y;
+      if (proj < minB) minB = proj;
+      if (proj > maxB) maxB = proj;
+    }
+
+    // Jeśli rzuty na którąkolwiek oś się nie przecinają -> brak kolizji
+    if (maxA <= minB + 0.5 || maxB <= minA + 0.5) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Sprawdza czy dany team (targetTeam) nachodzi na którykolwiek inny team z listy allTeams.
+ *
+ * @param {object} targetTeam
+ * @param {Array<object>} allTeams
+ * @param {number} pixelsPerMeter
+ * @param {string|null} [excludeTeamId]
+ * @returns {string|null} ID kolidującego teamu lub null, jeśli miejsce jest wolne
+ */
+export function checkTeamCollidesWithOthers(targetTeam, allTeams, pixelsPerMeter, excludeTeamId = null) {
+  const targetRect = {
+    x: targetTeam.x,
+    y: targetTeam.y,
+    widthPx: targetTeam.widthMeters * pixelsPerMeter,
+    heightPx: targetTeam.heightMeters * pixelsPerMeter,
+    rotationDegrees: targetTeam.rotation || 0,
+  };
+
+  for (const other of allTeams) {
+    if (other.id === targetTeam.id || other.id === excludeTeamId) continue;
+    const otherRect = {
+      x: other.x,
+      y: other.y,
+      widthPx: other.widthMeters * pixelsPerMeter,
+      heightPx: other.heightMeters * pixelsPerMeter,
+      rotationDegrees: other.rotation || 0,
+    };
+    if (checkOrientedRectsCollide(targetRect, otherRect)) {
+      return other.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Szuka wolnego (bezkolizyjnego) miejsca dla nowego naczepy/namiotu na torze przy użyciu spirali.
+ *
+ * @param {object} node - Proponowany obiekt teamu (z x, y, widthMeters, heightMeters, rotation)
+ * @param {Array<object>} existingTeams - Aktualna lista naczep na torze
+ * @param {number} pixelsPerMeter - Skala px/m
+ * @returns {object} Zwraca obiekt z nowymi pozycjami x i y bez kolizji
+ */
+export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter) {
+  let candidate = { ...node };
+  if (!checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id)) {
+    return candidate;
+  }
+
+  let step = 0;
+  // Przeszkukuj po spirali do 30 prób, przesuwając o kilkadziesiąt pikseli/metrów
+  while (checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id) && step < 35) {
+    step++;
+    const angle = step * 0.65;
+    const radius = (Math.floor(step / 2) + 1) * (Math.min(node.widthMeters, node.heightMeters) * pixelsPerMeter * 0.6);
+    candidate.x = node.x + Math.cos(angle) * radius;
+    candidate.y = node.y + Math.sin(angle) * radius;
+  }
+  return candidate;
+}
+

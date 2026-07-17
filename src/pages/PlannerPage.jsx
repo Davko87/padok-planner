@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
+import { findCleanSpotForNode } from '../lib/geoUtils.js';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
 
@@ -15,6 +16,7 @@ function PlannerPage() {
   // Stan zespołów umieszczonych na płótnie toru
   const [placedTeams, setPlacedTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [allowCollisions, setAllowCollisions] = useState(false);
 
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
@@ -216,7 +218,7 @@ function PlannerPage() {
     return () => clearTimeout(timer);
   }, [placedTeams, eventId]);
 
-  // Obsługa kliknięcia "+" w katalogu teamów -> dodaje na środek sceny
+  // Obsługa kliknięcia "+" w katalogu teamów -> dodaje na wolne miejsce w pobliżu środka sceny
   const handleSelectTeamFromCatalog = (teamTemplate) => {
     if (!eventData) return;
 
@@ -229,7 +231,7 @@ function PlannerPage() {
     const imgW = 1024;
     const ppm = imgW / physicalWidth;
 
-    const newTeamNode = {
+    let newTeamNode = {
       id: 'team_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       templateId: teamTemplate.id || 'custom',
       name: teamTemplate.name || 'Zespól Wyścigowy',
@@ -240,6 +242,10 @@ function PlannerPage() {
       y: (physicalHeight * ppm) / 2 - (heightMeters * ppm) / 2,
       rotation: 0,
     };
+
+    if (!allowCollisions) {
+      newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, ppm);
+    }
 
     const updated = [...placedTeams, newTeamNode];
     setPlacedTeams(updated);
@@ -272,6 +278,8 @@ function PlannerPage() {
         onUpdateTeams={setPlacedTeams}
         selectedTeamId={selectedTeamId}
         onSelectTeam={setSelectedTeamId}
+        allowCollisions={allowCollisions}
+        onToggleCollisions={() => setAllowCollisions((v) => !v)}
       />
 
       {/* Top bar (nałożony nad canvasem z Zadaniami 1, 5, 6, 7) */}
