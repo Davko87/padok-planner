@@ -198,19 +198,21 @@ export function AuthProvider({ children }) {
     if (!currentUser) return;
     try {
       const cleanId = currentUser.nick.trim().toLowerCase();
-      // Usunięcie wpisu z Firestore (z głównej bazy users)
-      await deleteDoc(doc(db, 'users', cleanId)).catch(e => console.warn('Błąd usuwania z DB:', e));
       
-      // Jeśli jesteśmy w Firebase Auth (cloud)
+      // Fire-and-forget dla bazy danych (aby interfejs zareagował od razu, w ułamek sekundy)
+      deleteDoc(doc(db, 'users', cleanId)).catch(e => console.warn('Błąd usuwania z DB:', e));
+      
       if (auth.currentUser) {
-        await auth.currentUser.delete().catch(e => console.warn('Błąd usuwania z Firebase Auth:', e));
+        auth.currentUser.delete().catch(e => console.warn('Błąd usuwania z Firebase Auth:', e));
       }
       
+      // Optymistyczne wyczyszczenie sesji - reaguje natychmiast
       setCurrentUser(null);
       localStorage.removeItem('padok_current_user');
     } catch (err) {
       console.error('Błąd usuwania konta:', err);
-      throw new Error('Wystąpił błąd podczas usuwania konta.');
+      setCurrentUser(null);
+      localStorage.removeItem('padok_current_user');
     }
   };
 
