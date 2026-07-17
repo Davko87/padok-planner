@@ -295,16 +295,17 @@ function PlannerPage() {
         getViewportCenterRef={getViewportCenterRef}
       />
 
-      {/* Top bar (nałożony nad canvasem z Zadaniami 1, 5, 6, 7) */}
-      <header className="absolute top-4 left-0 right-0 z-40 p-4 pointer-events-none">
-        <div className="glass-panel px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 max-w-6xl mx-auto pointer-events-auto shadow-glass-lg border-white/25">
+      {/* ZADANIE: Górny panel szklany przeniesiony na lewą stronę w pionie (Pionowy Panel HUD po lewej) */}
+      <header className="absolute top-4 left-4 z-40 w-60 pointer-events-none">
+        <div className="glass-panel p-4 flex flex-col gap-4 pointer-events-auto shadow-glass-lg border-white/25">
+          {/* Przycisk Powrót na Globus */}
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors duration-200 text-xs font-medium shrink-0"
+            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors duration-200 text-xs font-medium w-full pb-3 border-b border-white/15 shrink-0"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="w-4 h-4"
+              className="w-4 h-4 shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -312,11 +313,12 @@ function PlannerPage() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
-            Powrót na Globus
+            <span>Powrót na Globus</span>
           </button>
 
-          <div className="text-center">
-            <h2 className="text-sm font-bold text-white tracking-wide truncate max-w-[200px] sm:max-w-md">
+          {/* Nazwa i wymiary toru w pionowym układzie */}
+          <div className="flex flex-col gap-1 text-left">
+            <h2 className="text-sm font-bold text-white tracking-wide leading-snug break-words">
               {isLoadingEvent ? 'Ładowanie eventu...' : eventData ? eventData.name : eventId}
             </h2>
             {eventData && (
@@ -326,64 +328,62 @@ function PlannerPage() {
             )}
           </div>
 
-          {/* Akcje i status zapisu (Zadanie 7) */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {selectedTeamId && (
-              <button
-                onClick={() => {
-                  setPlacedTeams(placedTeams.filter((t) => t.id !== selectedTeamId));
-                  setSelectedTeamId(null);
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 text-xs flex items-center gap-1 transition-all shadow"
-                title="Usuń zaznaczony zespół z toru"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />
-                </svg>
-                <span>Usuń</span>
-              </button>
-            )}
-
-            {/* ZADANIE 7: Przycisk Ręcznego Zapisu */}
+          {/* Przycisk Usuń zaznaczony zespół */}
+          {selectedTeamId && (
             <button
-              onClick={handleSavePaddock}
-              disabled={saveStatus === 'saving'}
-              className="glass-button-primary px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
-              title="Zapisz obecny układ padoku w bazie (działa również offline)"
+              onClick={() => {
+                setPlacedTeams(placedTeams.filter((t) => t.id !== selectedTeamId));
+                setSelectedTeamId(null);
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 text-xs flex items-center justify-center gap-1.5 transition-all shadow"
+              title="Usuń zaznaczony zespół z toru"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />
               </svg>
-              <span>Zapisz układ</span>
+              <span>Usuń zaznaczony</span>
             </button>
+          )}
 
-            {/* Wskaźnik stanu zapisu w chmurze / lokalnie */}
-            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-xl border transition-all duration-300 bg-slate-900/85 border-white/20">
-              {saveStatus === 'saving' && (
-                <>
-                  <span className="w-2 h-2 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" />
-                  <span className="text-indigo-300">Zapisywanie...</span>
-                </>
-              )}
-              {saveStatus === 'pending' && (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                  <span className="text-amber-200/80">Oczekuje na zapis...</span>
-                </>
-              )}
-              {saveStatus === 'saved' && (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span className="text-emerald-300">Zapisano (Offline Ready)</span>
-                </>
-              )}
-              {saveStatus === 'error' && (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                  <span className="text-red-300">Błąd zapisu</span>
-                </>
-              )}
-            </div>
+          {/* Przycisk Ręcznego Zapisu */}
+          <button
+            onClick={handleSavePaddock}
+            disabled={saveStatus === 'saving'}
+            className="glass-button-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            title="Zapisz obecny układ padoku w bazie (działa również offline)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+            </svg>
+            <span>Zapisz układ</span>
+          </button>
+
+          {/* Wskaźnik stanu zapisu w chmurze / lokalnie */}
+          <div className="flex items-center justify-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl border transition-all duration-300 bg-[#060a13]/90 border-white/20 text-center">
+            {saveStatus === 'saving' && (
+              <>
+                <span className="w-2 h-2 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" />
+                <span className="text-indigo-300">Zapisywanie...</span>
+              </>
+            )}
+            {saveStatus === 'pending' && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                <span className="text-amber-200/80">Oczekuje na zapis...</span>
+              </>
+            )}
+            {saveStatus === 'saved' && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="text-emerald-300">Zapisano (Offline Ready)</span>
+              </>
+            )}
+            {saveStatus === 'error' && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                <span className="text-red-300">Błąd zapisu</span>
+              </>
+            )}
           </div>
         </div>
       </header>

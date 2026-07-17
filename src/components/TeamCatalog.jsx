@@ -83,21 +83,45 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
             </button>
           </div>
 
-          {/* Collapsed view indicator icon button */}
+          {/* Collapsed view: Mini-Dock z kolorami teamów i ich skrótami (zamiast nieczytelnego pionowego napisu) */}
           {isCollapsed ? (
-            <div className="flex-1 flex flex-col items-center justify-between py-6">
-              <div className="flex flex-col gap-3 items-center">
-                <span className="text-[10px] uppercase font-bold tracking-widest text-white/40 writing-mode-vertical rotate-180 py-4">
-                  KATALOG
-                </span>
+            <div className="flex-1 flex flex-col items-center justify-between py-4 overflow-y-auto w-full">
+              {/* Lista kolorów teamów (można w nie kliknąć lub przeciągnąć na tor!) */}
+              <div className="flex flex-col gap-2.5 items-center w-full px-2 my-2">
+                {teams.map((team) => {
+                  const abbr = (team.name || 'TM').slice(0, 2).toUpperCase();
+                  return (
+                    <div
+                      key={team.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('team', JSON.stringify(team));
+                      }}
+                      onClick={() => onSelectTeam && onSelectTeam(team)}
+                      style={{ backgroundColor: team.color || '#3b82f6' }}
+                      className="group relative w-10 h-10 rounded-xl border border-white/30 flex items-center justify-center text-white font-black text-xs cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg transition-all shrink-0 select-none"
+                    >
+                      <span className="drop-shadow-md">{abbr}</span>
+
+                      {/* Tooltip ze szczegółami po najechaniu myszką */}
+                      <div className="absolute right-full mr-3 px-2.5 py-1.5 rounded-lg bg-[#060a13] border border-white/20 text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-50 flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color || '#3b82f6' }} />
+                        <span>{team.name}</span>
+                        <span className="font-mono text-[10px] text-emerald-300">({team.widthMeters}×{team.heightMeters}m)</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
+              {/* Przycisk dodawania nowego teamu na dole zminimalizowanego panelu */}
               <button
                 onClick={() => {
                   setEditingTeam(null);
                   setIsModalOpen(true);
                 }}
-                className="w-10 h-10 rounded-xl bg-indigo-600/80 border border-indigo-400/40 flex items-center justify-center text-white hover:bg-indigo-600 hover:scale-110 transition-all shadow-glass"
-                title="Nowy szablon"
+                className="w-10 h-10 rounded-xl bg-indigo-600/80 border border-indigo-400/40 flex items-center justify-center text-white hover:bg-indigo-600 hover:scale-110 transition-all shadow-glass shrink-0 mt-auto"
+                title="Dodaj nowy szablon zespołu"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
