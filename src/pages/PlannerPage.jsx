@@ -246,6 +246,23 @@ function PlannerPage() {
     setSelectedTeamId(newTeamNode.id);
   };
 
+  const handleUpdateTemplate = (updatedTemplate) => {
+    setPlacedTeams((prev) =>
+      prev.map((t) => {
+        if (t.templateId === updatedTemplate.id) {
+          return {
+            ...t,
+            name: updatedTemplate.name || t.name,
+            widthMeters: updatedTemplate.width || t.widthMeters,
+            heightMeters: updatedTemplate.length || t.heightMeters,
+            color: updatedTemplate.color || t.color,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
   return (
     <div className="relative h-full w-full flex items-center justify-center overflow-hidden bg-slate-950">
       {/* Centralna Scena PaddockCanvas (Zadania 5 i 6) */}
@@ -375,7 +392,7 @@ function PlannerPage() {
       )}
 
       {/* Side panel — Team Catalog */}
-      <TeamCatalog onSelectTeam={handleSelectTeamFromCatalog} />
+      <TeamCatalog onSelectTeam={handleSelectTeamFromCatalog} onUpdateTemplate={handleUpdateTemplate} />
     </div>
   );
 }

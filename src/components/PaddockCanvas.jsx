@@ -197,37 +197,24 @@ function PaddockCanvas({
     onUpdateTeams && onUpdateTeams(updated);
   };
 
-  // ZADANIE 6: Obsługa końca transformacji za pomocą uchwytów (zapewnia krok co 0.5m w świecie fizycznym)
+  // ZADANIE 6 & 8: Obsługa końca transformacji (obrót z rogów bez skracania/wydłużania metrażu teamu!)
   const handleTransformEnd = () => {
     if (!selectedTeamId || !trRef.current) return;
     const node = selectedNodeRefs.current[selectedTeamId];
     if (!node) return;
 
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-
-    // Resetuj skalę węzła do 1, ponieważ zapisujemy rzeczywiste wymiary fizyczne w metrach
+    // Ponieważ resizeEnabled={false}, skalowanie jest wyłączone, a wymiary w metrach pozostają nienaruszone (sztywny metraż)
     node.scaleX(1);
     node.scaleY(1);
 
     const updated = placedTeams.map((t) => {
       if (t.id === selectedTeamId) {
-        const currentPxW = t.widthMeters * pixelsPerMeter;
-        const currentPxH = t.heightMeters * pixelsPerMeter;
-        const newPxW = Math.max(10, currentPxW * scaleX);
-        const newPxH = Math.max(10, currentPxH * scaleY);
-
-        // Zaokrąglij do dokładnego kroku co 0.5 metra w świecie fizycznym
-        const newWidthMeters = Math.max(1, Math.round((newPxW / pixelsPerMeter) * 2) / 2);
-        const newHeightMeters = Math.max(1, Math.round((newPxH / pixelsPerMeter) * 2) / 2);
-
         return {
           ...t,
           x: node.x(),
           y: node.y(),
-          rotation: Math.round(node.rotation()),
-          widthMeters: newWidthMeters,
-          heightMeters: newHeightMeters,
+          rotation: Math.round(node.rotation() * 10) / 10, // Precyzyjny kąt obrotu
+          // widthMeters i heightMeters pozostają bez zmian - zmieniasz je tylko w katalogu!
         };
       }
       return t;
@@ -455,21 +442,20 @@ function PaddockCanvas({
           })}
 
           {/* ZADANIE 6: react-konva Transformer z obracaniem i skokiem co 0.5m w świecie fizycznym */}
+          {/* react-konva Transformer z obracaniem z rogów (wyłączona opcja zmiany wymiarów, sztywny metraż!) */}
           {selectedTeamId && (
             <Transformer
               ref={trRef}
-              boundBoxFunc={(oldBox, newBox) => {
-                if (newBox.width < 10 || newBox.height < 10) {
-                  return oldBox;
-                }
-                return newBox;
-              }}
-              rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+              resizeEnabled={false} // Całkowita blokada skalowania na płótnie!
+              rotateEnabled={true}  // Włączony precyzyjny obrót z rogów
+              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']} // 4 rogi jako uchwyty obrotu
+              rotationSnaps={[]} // Swobodny i delikatny obrót co 0.1°-1° w każdej płaszczyźnie bez sztywnego przeskoku 45°
               anchorStroke="#10B981"
               anchorFill="#ffffff"
-              anchorSize={Math.max(8, 10 / stageScale)}
+              anchorSize={Math.max(10, 14 / stageScale)}
+              rotateAnchorOffset={30}
               borderStroke="#10B981"
-              borderStrokeWidth={Math.max(1, 2 / stageScale)}
+              borderStrokeWidth={Math.max(1.5, 2.5 / stageScale)}
               borderDash={[4, 4]}
               onTransformEnd={handleTransformEnd}
             />

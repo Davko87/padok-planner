@@ -3,10 +3,11 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import NewTeamModal from './NewTeamModal.jsx';
 
-function TeamCatalog({ onSelectTeam }) {
+function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   const [teams, setTeams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
@@ -91,7 +92,10 @@ function TeamCatalog({ onSelectTeam }) {
                 </span>
               </div>
               <button
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => {
+                  setEditingTeam(null);
+                  setIsModalOpen(true);
+                }}
                 className="w-10 h-10 rounded-xl bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center text-white hover:bg-indigo-500/50 hover:scale-110 transition-all shadow-glass"
                 title="Nowy Team"
               >
@@ -152,8 +156,8 @@ function TeamCatalog({ onSelectTeam }) {
                         </div>
                       </div>
 
-                      {/* Color indicator badge & arrow */}
-                      <div className="flex items-center gap-2 shrink-0">
+                      {/* Color indicator badge & buttons */}
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <div
                           className="w-5 h-5 rounded-lg border border-white/30 shadow-sm"
                           style={{ backgroundColor: team.color || '#3b82f6' }}
@@ -162,9 +166,21 @@ function TeamCatalog({ onSelectTeam }) {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setEditingTeam(team);
+                            setIsModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-md bg-white/10 text-white/70 hover:text-white hover:bg-white/20 transition-all text-xs flex items-center justify-center"
+                          title="Edytuj metraż / kolor teamu"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             onSelectTeam && onSelectTeam(team);
                           }}
-                          className="p-1 rounded-md bg-white/10 text-white/70 hover:text-white hover:bg-white/20 transition-all text-xs flex items-center justify-center"
+                          className="p-1.5 px-2 rounded-md bg-indigo-500/30 text-white font-bold hover:bg-indigo-500/50 transition-all text-xs flex items-center justify-center shadow"
                           title="Umieść na torze"
                         >
                           +
@@ -178,7 +194,10 @@ function TeamCatalog({ onSelectTeam }) {
               {/* Bottom bar with button */}
               <div className="p-4 border-t border-white/10 bg-black/20 backdrop-blur-md">
                 <button
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => {
+                    setEditingTeam(null);
+                    setIsModalOpen(true);
+                  }}
                   className="glass-button-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-glass group"
                 >
                   <svg
@@ -198,7 +217,15 @@ function TeamCatalog({ onSelectTeam }) {
       </div>
 
       {/* Modal dialog */}
-      <NewTeamModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <NewTeamModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingTeam(null);
+        }}
+        editingTeam={editingTeam}
+        onUpdateTemplate={onUpdateTemplate}
+      />
     </>
   );
 }

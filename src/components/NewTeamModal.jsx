@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 
 const PRESET_COLORS = [
@@ -15,13 +15,28 @@ const PRESET_COLORS = [
   '#334155', // Slate dark
 ];
 
-function NewTeamModal({ isOpen, onClose }) {
+function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = null }) {
   const [name, setName] = useState('');
   const [width, setWidth] = useState('10');
   const [length, setLength] = useState('15');
   const [color, setColor] = useState('#ef4444');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (editingTeam) {
+      setName(editingTeam.name || '');
+      setWidth(String(editingTeam.width || editingTeam.widthMeters || '10'));
+      setLength(String(editingTeam.length || editingTeam.heightMeters || '15'));
+      setColor(editingTeam.color || '#ef4444');
+    } else if (isOpen) {
+      setName('');
+      setWidth('10');
+      setLength('15');
+      setColor('#ef4444');
+      setError('');
+    }
+  }, [editingTeam, isOpen]);
 
   if (!isOpen) return null;
 
@@ -43,23 +58,36 @@ function NewTeamModal({ isOpen, onClose }) {
 
     try {
       setIsSubmitting(true);
-      await addDoc(collection(db, 'teams_templates'), {
+      const teamData = {
         name: name.trim(),
         width: parsedWidth,
         length: parsedLength,
         color,
-        createdAt: serverTimestamp(),
-      });
-      // Reset form and close
-      setName('');
-      setWidth('10');
-      setLength('15');
-      setColor('#ef4444');
+        updatedAt: serverTimestamp(),
+      };
+
+      if (editingTeam && editingTeam.id) {
+        // Błyskawiczny zapis bez blokowania interfejsu (optymistyczny update + synchro w tle bez czekania 40s)
+        updateDoc(doc(db, 'teams_templates', editingTeam.id), teamData).catch((err) =>
+          console.error('Błąd synchronizacji updateDoc w tle:', err)
+        );
+        if (onUpdateTemplate) {
+          onUpdateTemplate({ id: editingTeam.id, ...teamData });
+        }
+      } else {
+        // Nowy team - błyskawiczna inicjacja bez czekania na wolny ACK z serwera
+        addDoc(collection(db, 'teams_templates'), {
+          ...teamData,
+          createdAt: serverTimestamp(),
+        }).catch((err) => console.error('Błąd synchronizacji addDoc w tle:', err));
+      }
+
+      // Natychmiastowe zamknięcie modalu (zapis trwa < 0.1s zamiast 40s)
+      setIsSubmitting(false);
       onClose();
     } catch (err) {
       console.error('Błąd podczas zapisywania szablonu teamu:', err);
-      setError('Nie udało się zapisać teamu w bazie.');
-    } finally {
+      setError('Nie udało się zapisać teamu.');
       setIsSubmitting(false);
     }
   };
@@ -79,10 +107,12 @@ function NewTeamModal({ isOpen, onClose }) {
 
         <h3 className="text-2xl font-bold mb-1 text-white flex items-center gap-2">
           <span className="w-3 h-3 rounded-full bg-indigo-400 inline-block" />
-          Nowy Szablon Teamu
+          {editingTeam ? 'Edycja Szablonu Teamu' : 'Nowy Szablon Teamu'}
         </h3>
         <p className="text-white/50 text-sm mb-6">
-          Zdefiniuj parametry fizyczne i kolor dla zespołu wyścigowego.
+          {editingTeam
+            ? 'Zmień sztywny metraż lub kolor zespołu. Zmiany natychmiast zaktualizują naczepy na torze!'
+            : 'Zdefiniuj parametry fizyczne (metraż) i kolor dla zespołu wyścigowego.'}
         </p>
 
         {error && (
@@ -147,7 +177,7 @@ function NewTeamModal({ isOpen, onClose }) {
           {/* Kolor */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-2">
-              Kolor Identikator
+              Kolor Identyfikator
             </label>
             <div className="flex flex-wrap gap-2.5 mb-3">
               {PRESET_COLORS.map((preset) => (
@@ -198,7 +228,7 @@ function NewTeamModal({ isOpen, onClose }) {
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
                   </svg>
-                  Dodaj Team
+                  {editingTeam ? 'Zapisz Zmiany' : 'Dodaj Team'}
                 </>
               )}
             </button>

@@ -752,21 +752,31 @@ function HomePage() {
 
       {/* Dolny Panel Akcji po wylądowaniu na Ziemi */}
       {hasArrived && selectedTrack && !showCustomBoundsModal && !isCustomFramingMode && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 pointer-events-auto animate-slide-up">
-          <div className="glass-panel-strong p-5 rounded-2xl border-indigo-400/50 shadow-[0_0_40px_rgba(79,46,229,0.35)] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-center sm:text-left min-w-0">
-              <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold mb-1">
-                ✔ CEL NA ZIEMI OSIĄGNIĘTY
-              </span>
-              <h3 className="text-sm sm:text-base font-extrabold text-white truncate">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-[95vw] max-w-4xl pointer-events-auto animate-slide-up">
+          <div className="glass-panel-strong px-6 py-4 md:px-8 md:py-5 rounded-3xl border-indigo-400/40 shadow-[0_16px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl bg-slate-950/85 flex flex-col md:flex-row items-center justify-between gap-5">
+            {/* Sekcja tekstowa - szeroka, czytelna, bez obcinania liter do 'J..' i bez brzydkiego zawijania słów */}
+            <div className="text-center md:text-left min-w-0 flex-1">
+              <div className="flex items-center justify-center md:justify-start gap-2 mb-1.5 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Cel na Ziemi osiągnięty
+                </span>
+                {selectedTrack?.city && (
+                  <span className="text-xs text-indigo-300/80 font-medium px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-400/20">
+                    📍 {selectedTrack.city}
+                  </span>
+                )}
+              </div>
+              <h3 className="text-lg md:text-xl font-extrabold text-white tracking-tight leading-snug mb-1 break-words">
                 {selectedTrack.name}
               </h3>
-              <p className="text-xs text-white/60 font-mono">
-                Możesz przesuwać mapę i przybliżać w dowolne miejsce!
+              <p className="text-xs md:text-sm text-white/70 font-mono">
+                Możesz swobodnie przesuwać i przybliżać mapę, aby wybrać dokładne miejsce pod padok.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            {/* Sekcja przycisków - symetryczna, szeroka i wyraźna */}
+            <div className="flex items-center justify-center gap-3 shrink-0 w-full md:w-auto flex-wrap sm:flex-nowrap">
               <button
                 onClick={() => {
                   setHasArrived(false);
@@ -775,17 +785,21 @@ function HomePage() {
                   }
                 }}
                 title="Wróć do widoku kuli ziemskiej w kosmosie"
-                className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white"
+                className="glass-button px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold text-white/90 hover:text-white hover:bg-white/15 transition-all flex items-center gap-2"
               >
-                🌍 Globus
+                <span>🌍</span>
+                <span>Globus</span>
               </button>
+
               <button
                 onClick={startPolygonFraming}
                 title="Narysuj wielokątną granicę padoku w terenie (Polygon Lasso)"
-                className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white font-bold text-emerald-300 border-emerald-400/40"
+                className="glass-button px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-emerald-300 hover:text-emerald-200 border-emerald-400/40 hover:border-emerald-400 hover:bg-emerald-500/20 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
               >
-                📐 Kadruj obszar
+                <span>📐</span>
+                <span>Kadruj obszar</span>
               </button>
+
               <button
                 onClick={() => {
                   if (!selectedTrack.isCustomAddress) {
@@ -794,7 +808,7 @@ function HomePage() {
                     handleConfirmCustomBounds();
                   }
                 }}
-                className="glass-button-primary px-5 py-2.5 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg w-full sm:w-auto"
+                className="glass-button-primary px-6 py-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:scale-105 transition-all shrink-0"
               >
                 <span>Zaplanuj Padok</span>
                 <span className="text-base">🚀</span>

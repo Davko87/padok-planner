@@ -146,43 +146,41 @@ function DPadControls({
           <span className="text-[10px] text-white/50 font-mono">+90°</span>
         </div>
 
-        {/* Szybka korekta wymiarów (Tablet / Gruby Palec) */}
-        <div className="hidden sm:flex flex-col gap-1 pl-3 border-l border-white/15">
+        {/* Precyzyjny obrót co 1° i 5° (Delikatna korekta kąta na boki w różnych płaszczyznach) */}
+        <div className="flex flex-col gap-1 pl-3 border-l border-white/15">
           <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold text-center mb-0.5">
-            Wymiary [±0.5m]
+            Precyzyjny kąt [±1°]
           </span>
-          <div className="flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-white/60 w-8">Szer:</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono justify-center">
             <button
-              onClick={() => onResize(-0.5, 0)}
-              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80"
-              title="Zmniejsz szerokość o 0.5m"
+              onClick={() => onRotate(-1)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-emerald-500/40 text-white font-bold transition-all shadow-sm"
+              title="Delikatnie obróć w lewo o 1°"
             >
-              −
+              −1°
             </button>
             <button
-              onClick={() => onResize(0.5, 0)}
-              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80"
-              title="Zwiększ szerokość o 0.5m"
+              onClick={() => onRotate(1)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-emerald-500/40 text-white font-bold transition-all shadow-sm"
+              title="Delikatnie obróć w prawo o 1°"
             >
-              +
+              +1°
             </button>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-white/60 w-8">Dłg:</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono justify-center">
             <button
-              onClick={() => onResize(0, -0.5)}
-              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80"
-              title="Zmniejsz długość o 0.5m"
+              onClick={() => onRotate(-5)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-emerald-500/40 text-white/80 transition-all shadow-sm"
+              title="Obróć w lewo o 5°"
             >
-              −
+              −5°
             </button>
             <button
-              onClick={() => onResize(0, 0.5)}
-              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80"
-              title="Zwiększ długość o 0.5m"
+              onClick={() => onRotate(5)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-emerald-500/40 text-white/80 transition-all shadow-sm"
+              title="Obróć w prawo o 5°"
             >
-              +
+              +5°
             </button>
           </div>
         </div>
