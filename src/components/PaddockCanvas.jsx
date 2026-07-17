@@ -420,12 +420,34 @@ function PaddockCanvas({
     onUpdateTeams && onUpdateTeams(updated);
   };
 
-  // Kontrolki zoom HUD
+  // Kontrolki zoom HUD (powiększanie/oddalanie dokładnie względem środka ekranu)
   const handleZoom = (direction) => {
+    if (!containerRef.current) return;
+    const oldScale = stageScale;
     const scaleBy = 1.25;
-    const newScale = direction === 'in' ? stageScale * scaleBy : stageScale / scaleBy;
+    const newScale = direction === 'in' ? oldScale * scaleBy : oldScale / scaleBy;
     const clampedScale = Math.max(0.15, Math.min(5, newScale));
+
+    // Środek widocznego ekranu / kontenera mapy
+    const center = {
+      x: containerRef.current.offsetWidth / 2,
+      y: containerRef.current.offsetHeight / 2,
+    };
+
+    // Obliczamy jaki punkt na mapie znajduje się na środku ekranu przed zoomem
+    const pointTo = {
+      x: (center.x - stagePos.x) / oldScale,
+      y: (center.y - stagePos.y) / oldScale,
+    };
+
+    // Obliczamy nową pozycję mapy tak, by dokładnie ten sam punkt pozostał na środku ekranu po zoomie
+    const newPos = {
+      x: center.x - pointTo.x * clampedScale,
+      y: center.y - pointTo.y * clampedScale,
+    };
+
     setStageScale(clampedScale);
+    setStagePos(newPos);
   };
 
   const handleResetCamera = () => {
