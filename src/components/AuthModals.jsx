@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export function LoginModal({ isOpen, onClose, onSwitchToRegister }) {
@@ -151,7 +151,7 @@ export function LoginModal({ isOpen, onClose, onSwitchToRegister }) {
 }
 
 export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
-  const { register } = useAuth();
+  const { register, checkNickAvailable } = useAuth();
   const [nick, setNick] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -160,7 +160,39 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Statusy weryfikacji w czasie rzeczywistym
+  const [isNickAvailable, setIsNickAvailable] = useState(null); // null | true | false
+  const [isCheckingNick, setIsCheckingNick] = useState(false);
+
+  // Sprawdź nick w bazie na żywo
+  useEffect(() => {
+    if (!nick || nick.trim().length < 3) {
+      setIsNickAvailable(null);
+      return;
+    }
+    let isCancelled = false;
+    setIsCheckingNick(true);
+
+    const timer = setTimeout(async () => {
+      const avail = await checkNickAvailable(nick);
+      if (!isCancelled) {
+        setIsNickAvailable(avail);
+        setIsCheckingNick(false);
+      }
+    }, 350);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [nick, checkNickAvailable]);
+
   if (!isOpen) return null;
+
+  // Weryfikacja haseł
+  const isPasswordValid = password.length >= 8 && /\d/.test(password);
+  const doPasswordsMatch = isPasswordValid && confirmPassword.length > 0 && password === confirmPassword;
+  const doPasswordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -174,16 +206,16 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
       setError('Nick musi mieć minimum 3 znaki.');
       return;
     }
-    if (password.length < 8) {
-      setError('Hasło musi mieć minimum 8 znaków.');
+    if (isNickAvailable === false) {
+      setError('Ten nick jest już zajęty!');
       return;
     }
-    if (!/\d/.test(password)) {
-      setError('Hasło musi zawierać przynajmniej jedną cyfrę.');
+    if (!isPasswordValid) {
+      setError('Hasło musi mieć minimum 8 znaków i przynajmniej jedną cyfrę.');
       return;
     }
-    if (password !== confirmPassword) {
-      setError('Wpisane hasła nie są takie same!');
+    if (!doPasswordsMatch) {
+      setError('Wpisane hasła nie są identyczne!');
       return;
     }
 
@@ -232,23 +264,49 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-1.5">
-              Nick (Nazwa użytkownika)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/70">
+                Nick (Nazwa użytkownika)
+              </label>
+              {isCheckingNick && (
+                <span className="text-[10px] text-indigo-300 animate-pulse">Sprawdzanie...</span>
+              )}
+              {!isCheckingNick && isNickAvailable === true && (
+                <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                  <span>✓ Wolny (dostępny)</span>
+                </span>
+              )}
+              {!isCheckingNick && isNickAvailable === false && (
+                <span className="text-[11px] text-red-400 font-bold flex items-center gap-1">
+                  <span>✕ Nick zajęty!</span>
+                </span>
+              )}
+            </div>
             <input
               type="text"
               value={nick}
               onChange={(e) => setNick(e.target.value)}
               placeholder="np. Davko"
               required
-              className="glass-input w-full"
+              className={`w-full bg-black/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none transition-all font-medium ${
+                isNickAvailable === true
+                  ? 'border-2 border-emerald-500 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                  : isNickAvailable === false
+                  ? 'border-2 border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.3)]'
+                  : 'border border-white/20 focus:border-indigo-400 shadow-inner'
+              }`}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-1.5">
-              Hasło <span className="text-[10px] text-white/40 normal-case">(min. 8 znaków, min. 1 cyfra)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/70">
+                Hasło <span className="text-[10px] text-white/40 normal-case">(min. 8 znaków, cyfra)</span>
+              </label>
+              {doPasswordsMatch && (
+                <span className="text-[11px] text-emerald-400 font-bold">✓ Hasła zgodne</span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -256,7 +314,13 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="glass-input w-full pr-11"
+                className={`w-full bg-black/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none transition-all font-medium pr-11 ${
+                  doPasswordsMatch
+                    ? 'border-2 border-emerald-500 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                    : doPasswordsMismatch
+                    ? 'border-2 border-red-500 bg-red-500/10'
+                    : 'border border-white/20 focus:border-indigo-400 shadow-inner'
+                }`}
               />
               <button
                 type="button"
@@ -279,9 +343,17 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-1.5">
-              Powtórz hasło
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/70">
+                Powtórz hasło
+              </label>
+              {doPasswordsMatch && (
+                <span className="text-[11px] text-emerald-400 font-bold">✓ Hasła zgodne</span>
+              )}
+              {doPasswordsMismatch && (
+                <span className="text-[11px] text-red-400 font-bold">✕ Hasła różne</span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type={showConfirmPassword ? 'text' : 'password'}
@@ -289,7 +361,13 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="glass-input w-full pr-11"
+                className={`w-full bg-black/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none transition-all font-medium pr-11 ${
+                  doPasswordsMatch
+                    ? 'border-2 border-emerald-500 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                    : doPasswordsMismatch
+                    ? 'border-2 border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.3)]'
+                    : 'border border-white/20 focus:border-indigo-400 shadow-inner'
+                }`}
               />
               <button
                 type="button"
@@ -313,8 +391,8 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="glass-button-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50 mt-2"
+            disabled={isSubmitting || isNickAvailable === false || !doPasswordsMatch}
+            className="glass-button-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-40 mt-2"
           >
             {isSubmitting ? (
               <>

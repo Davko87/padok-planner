@@ -26,7 +26,7 @@ export function AuthProvider({ children }) {
       }
     }
 
-    // Nasłuchuj zmian w Firebase Auth
+    // Nasłuchuj zmian w Firebase Auth w tle (z timeoutem/nieblokująco)
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const nick = user.displayName || user.email?.split('@')[0] || 'Użytkownik';
@@ -38,7 +38,6 @@ export function AuthProvider({ children }) {
         setCurrentUser(userObj);
         localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       } else {
-        // Jeśli nie w Firebase Auth, sprawdź czy mamy lokalną sesję z Firestore fallback
         const stored = localStorage.getItem('padok_current_user');
         if (stored) {
           try {
@@ -62,26 +61,58 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
+  // Sprawdzanie dostępności nicku na żywo (dla zielonego podświetlenia w formularzu)
+  const checkNickAvailable = async (nick) => {
+    if (!nick || nick.trim().length < 3) return null;
+    const cleanNick = nick.trim().toLowerCase();
+    try {
+      const getPromise = getDoc(doc(db, 'users', cleanNick));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
+      const docSnap = await Promise.race([getPromise, timeoutPromise]);
+      return !docSnap.exists();
+    } catch (e) {
+      return true; // w razie offline przykładowo uznajemy wolny lub sprawdzimy przy rejestracji
+    }
+  };
+
   const register = async (nick, password) => {
     const cleanNick = nick.trim();
-    const pseudoEmail = `${cleanNick.toLowerCase()}@padok.app`;
+    const cleanId = cleanNick.toLowerCase();
+    const pseudoEmail = `${cleanId}@padok.app`;
 
+    // 1. Sprawdzenie błyskawiczne w Firestore czy nick już istnieje (maksymalnie 2 sekundy timeoutu)
+    const userDocRef = doc(db, 'users', cleanId);
+    let docSnap = null;
     try {
-      // 1. Spróbuj zarejestrować przez Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, pseudoEmail, password);
-      await updateProfile(userCredential.user, { displayName: cleanNick });
+      const getPromise = getDoc(userDocRef);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2000));
+      docSnap = await Promise.race([getPromise, timeoutPromise]);
+    } catch (e) {
+      console.warn('Szybkie sprawdzanie nicku Firestore offline/timeout -> proceed locally:', e);
+    }
 
-      // Zapisz profil w Firestore
-      try {
-        await setDoc(doc(db, 'users', cleanNick.toLowerCase()), {
-          nick: cleanNick,
-          uid: userCredential.user.uid,
-          createdAt: serverTimestamp(),
-        });
-      } catch (e) {
-        console.error('Błąd zapisu profilu Firestore:', e);
-      }
+    if (docSnap && docSnap.exists()) {
+      throw new Error('Użytkownik o takim nicku już istnieje!');
+    }
 
+    // 2. Natychmiastowe utworzenie konta w Firestore (nie czekamy na długie wiszenie sieci)
+    try {
+      setDoc(userDocRef, {
+        nick: cleanNick,
+        password: password,
+        createdAt: serverTimestamp(),
+      }).catch((e) => console.warn('Zapis Firestore offline:', e));
+    } catch (e) {
+      console.error('Błąd zapisu Firestore:', e);
+    }
+
+    // 3. Opcjonalna próba utworzenia w Firebase Auth z timeoutem 1.5s, by NIE WISIAŁO gdy Auth wyłączone
+    try {
+      const authPromise = createUserWithEmailAndPassword(auth, pseudoEmail, password);
+      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 1500));
+      const userCredential = await Promise.race([authPromise, timeoutAuth]);
+      await updateProfile(userCredential.user, { displayName: cleanNick }).catch(() => {});
+      
       const userObj = {
         uid: userCredential.user.uid,
         nick: cleanNick,
@@ -91,28 +122,9 @@ export function AuthProvider({ children }) {
       localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       return { success: true, user: userObj };
     } catch (err) {
-      console.error('Firebase Auth register error:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        throw new Error('Użytkownik o takim nicku już istnieje!');
-      }
-      if (err.code === 'auth/weak-password') {
-        throw new Error('Hasło jest za słabe. Użyj minimum 8 znaków w tym przynajmniej jednej cyfry.');
-      }
-
-      // Jeśli metoda email/password nie jest włączona w konsoli Firebase (auth/configuration-not-found, auth/operation-not-allowed) lub błąd offline
-      const userDocRef = doc(db, 'users', cleanNick.toLowerCase());
-      const docSnap = await getDoc(userDocRef).catch(() => null);
-      if (docSnap && docSnap.exists()) {
-        throw new Error('Użytkownik o takim nicku już istnieje!');
-      }
-      await setDoc(userDocRef, {
-        nick: cleanNick,
-        password: password,
-        createdAt: serverTimestamp(),
-      }).catch((e) => console.warn('Offline/Firestore fallback:', e));
-
+      // Jeśli Auth wyłączone w konsoli lub wisiało -> błyskawiczny powrót i zalogowanie z konta Firestore/lokalnego
       const fallbackUser = {
-        uid: 'user_' + cleanNick.toLowerCase() + '_' + Date.now(),
+        uid: 'user_' + cleanId + '_' + Date.now(),
         nick: cleanNick,
         isFallback: true,
       };
@@ -124,30 +136,20 @@ export function AuthProvider({ children }) {
 
   const login = async (nick, password) => {
     const cleanNick = nick.trim();
-    const pseudoEmail = `${cleanNick.toLowerCase()}@padok.app`;
+    const cleanId = cleanNick.toLowerCase();
+    const pseudoEmail = `${cleanId}@padok.app`;
 
+    // 1. Najpierw sprawdzamy w Firestore z timeoutem (błyskawiczne logowanie po nicku i haśle)
+    const userDocRef = doc(db, 'users', cleanId);
     try {
-      // 1. Spróbuj zalogować przez Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, pseudoEmail, password);
-      const loggedNick = userCredential.user.displayName || cleanNick;
-      const userObj = {
-        uid: userCredential.user.uid,
-        nick: loggedNick,
-        email: pseudoEmail,
-      };
-      setCurrentUser(userObj);
-      localStorage.setItem('padok_current_user', JSON.stringify(userObj));
-      return { success: true, user: userObj };
-    } catch (err) {
-      console.error('Firebase Auth login error:', err);
-      // Sprawdź Firestore fallback (dla auth/configuration-not-found, auth/operation-not-allowed, auth/user-not-found, auth/invalid-credential itp.)
-      const userDocRef = doc(db, 'users', cleanNick.toLowerCase());
-      const docSnap = await getDoc(userDocRef).catch(() => null);
+      const getPromise = getDoc(userDocRef);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2000));
+      const docSnap = await Promise.race([getPromise, timeoutPromise]);
       if (docSnap && docSnap.exists()) {
         const data = docSnap.data();
         if (data.password === password) {
           const fallbackUser = {
-            uid: data.uid || ('user_' + cleanNick.toLowerCase()),
+            uid: data.uid || ('user_' + cleanId),
             nick: data.nick || cleanNick,
             isFallback: true,
           };
@@ -158,6 +160,26 @@ export function AuthProvider({ children }) {
           throw new Error('Nieprawidłowe hasło!');
         }
       }
+    } catch (e) {
+      if (e.message === 'Nieprawidłowe hasło!') throw e;
+      console.warn('Firestore login check error/timeout:', e);
+    }
+
+    // 2. Próba logowania w Firebase Auth jeśli istnieje konto cloud
+    try {
+      const authPromise = signInWithEmailAndPassword(auth, pseudoEmail, password);
+      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 1500));
+      const userCredential = await Promise.race([authPromise, timeoutAuth]);
+      const loggedNick = userCredential.user.displayName || cleanNick;
+      const userObj = {
+        uid: userCredential.user.uid,
+        nick: loggedNick,
+        email: pseudoEmail,
+      };
+      setCurrentUser(userObj);
+      localStorage.setItem('padok_current_user', JSON.stringify(userObj));
+      return { success: true, user: userObj };
+    } catch (err) {
       throw new Error('Nieprawidłowy nick lub hasło!');
     }
   };
@@ -173,7 +195,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, loading, register, login, logout }}>
+    <AuthContext.Provider value={{ currentUser, loading, register, login, logout, checkNickAvailable }}>
       {children}
     </AuthContext.Provider>
   );
