@@ -12,18 +12,27 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const handleDeleteTeam = async () => {
+  const handleDeleteTeam = () => {
     if (!deletingTeam) return;
     setIsDeleting(true);
-    try {
-      await deleteDoc(doc(db, 'teams_templates', deletingTeam.id));
-      setDeletingTeam(null);
-    } catch (error) {
-      console.error('Błąd usuwania teamu:', error);
-      alert('Wystąpił błąd podczas usuwania teamu.');
-    } finally {
+    
+    // Zabezpieczenie: jeśli Firebase nie odpowie w ciągu 1.5 sekundy, zamknij modal (częsty problem z offline persistence na darmowym planie)
+    const timeout = setTimeout(() => {
       setIsDeleting(false);
-    }
+      setDeletingTeam(null);
+    }, 1500);
+
+    deleteDoc(doc(db, 'teams_templates', deletingTeam.id))
+      .then(() => {
+        clearTimeout(timeout);
+        setDeletingTeam(null);
+        setIsDeleting(false);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        console.error('Błąd usuwania teamu:', error);
+        setIsDeleting(false);
+      });
   };
 
   useEffect(() => {
@@ -225,17 +234,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                         >
                           🗑️
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectTeam && onSelectTeam(team);
-                          }}
-                          className="p-1.5 px-2 rounded-md bg-indigo-600/80 text-white font-bold hover:bg-indigo-600 transition-all text-xs flex items-center justify-center shadow"
-                          title="Umieść na torze"
-                        >
-                          +
-                        </button>
+
                       </div>
                     </div>
                   ))
