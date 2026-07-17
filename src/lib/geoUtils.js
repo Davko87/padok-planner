@@ -168,8 +168,8 @@ export function checkOrientedRectsCollide(rectA, rectB) {
       if (proj > maxB) maxB = proj;
     }
 
-    // Jeśli rzuty na którąkolwiek oś się nie przecinają -> brak kolizji
-    if (maxA <= minB + 0.5 || maxB <= minA + 0.5) {
+    // Jeśli rzuty na którąkolwiek oś się nie przecinają -> brak kolizji (z tolerancją 2.0px na idealny styk)
+    if (maxA <= minB + 2.0 || maxB <= minA + 2.0) {
       return false;
     }
   }
@@ -239,14 +239,15 @@ export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter) {
 
 /**
  * Znajduje pozycję przyciągniętą jak magnes do krawędzi sąsiednich namiotów.
+ * Automatycznie synchronizuje obrót (kąt) przesuwanego namiotu z sąsiadem i precyzyjnie wyrównuje krawędzie.
  *
  * @param {object} targetTeam - Aktualnie przesuwany zespół
  * @param {Array<object>} allTeams - Lista wszystkich zespołów na torze
  * @param {number} pixelsPerMeter - Skala px/m
- * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 3.5m)
+ * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 4.5m)
  * @returns {object|null} Zwraca { x, y, rotation, snappedToId } lub null, jeśli brakuje bliskich sąsiadów
  */
-export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 3.5) {
+export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 4.5) {
   if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
 
   const thresholdPx = snapThresholdMeters * pixelsPerMeter;
@@ -255,7 +256,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
   const T_rot = targetTeam.rotation || 0;
 
   let bestCandidate = null;
-  let minDistance = thresholdPx;
+  let minDistance = thresholdPx * 1.5;
 
   for (const other of allTeams) {
     if (other.id === targetTeam.id) continue;
@@ -265,11 +266,6 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     const O_w = other.widthMeters * pixelsPerMeter;
     const O_h = other.heightMeters * pixelsPerMeter;
     const O_rot = other.rotation || 0;
-
-    // Sprawdź czy kąt jest bliski (np. w granicach +- 25 stopni lub ich wielokrotności 90 stopni)
-    // Jeśli rotacje są identyczne lub bliskie, przyciągamy wzdłuż osi prostokąta sąsiada
-    const rotDiff = Math.abs(((T_rot - O_rot + 180) % 360) - 180);
-    const isAngleCompatible = rotDiff <= 25 || Math.abs(rotDiff - 90) <= 25 || Math.abs(rotDiff - 180) <= 25 || Math.abs(rotDiff - 270) <= 25;
 
     // Szybki odsiew odległości (Bounding sphere / center distance)
     const centerT = { x: targetTeam.x + T_w / 2, y: targetTeam.y + T_h / 2 };
@@ -287,103 +283,115 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     // Rzut aktualnego położenia targetu (T.x, T.y) względem początku sąsiada (O.x, O.y)
     const dx = targetTeam.x - O_x;
     const dy = targetTeam.y - O_y;
-    const proj_u = dx * u.x + dy * u.y; // pozycja wzdłuż szerokości sąsiada
-    const proj_v = dx * v.x + dy * v.y; // pozycja wzdłuż wysokości sąsiada
+    const proj_u = dx * u.x + dy * u.y;
+    const proj_v = dx * v.x + dy * v.y;
 
-    // Określ optymalny kąt po przyciągnięciu: jeśli rotDiff bliskie 0, przyciągnij do O_rot
-    let targetSnappedRot = T_rot;
-    if (rotDiff <= 25) {
+    // Automatyczna synchronizacja kąta do najbliższej wielokrotności 90 stopni względem O_rot
+    const diff0 = Math.abs(((T_rot - O_rot + 180) % 360) - 180);
+    const diff90 = Math.abs(((T_rot - (O_rot + 90) + 180) % 360) - 180);
+    const diff180 = Math.abs(((T_rot - (O_rot + 180) + 180) % 360) - 180);
+    const diff270 = Math.abs(((T_rot - (O_rot + 270) + 180) % 360) - 180);
+
+    let targetSnappedRot = O_rot;
+    if (diff0 <= diff90 && diff0 <= diff180 && diff0 <= diff270) {
       targetSnappedRot = O_rot;
+    } else if (diff90 <= diff180 && diff90 <= diff270) {
+      targetSnappedRot = (O_rot + 90) % 360;
+    } else if (diff180 <= diff270) {
+      targetSnappedRot = (O_rot + 180) % 360;
+    } else {
+      targetSnappedRot = (O_rot + 270) % 360;
     }
 
-    // Jeśli rotacja po przyciągnięciu jest równa O_rot, możemy precyzyjnie przyciągać do 4 ścian:
-    if (Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) <= 5) {
-      const candidates = [];
+    // Oblicz wymiary przesuwanego namiotu w układzie lokalnym sąsiada (jeśli obrócony o 90/270, zamień w z h)
+    const isRotated90 = Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) > 45 && Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) < 135;
+    const T_w_local = isRotated90 ? T_h : T_w;
+    const T_h_local = isRotated90 ? T_w : T_h;
 
-      // 1. Ściana PRAWA (Target bezpośrednio po prawej od Other) -> proj_u powinno wynosić O_w
-      {
-        const cand_u = O_w;
-        // Sprawdź wyrównanie wzdłuż wysokości (v): do góry (0), do dołu (O_h - T_h) lub wyśrodkowane ((O_h - T_h)/2) lub bieżące
-        const alignTop = 0;
-        const alignBot = O_h - T_h;
-        const alignMid = (O_h - T_h) / 2;
+    const candidates = [];
 
-        let cand_v = proj_v;
-        if (Math.abs(proj_v - alignTop) < thresholdPx * 0.7) cand_v = alignTop;
-        else if (Math.abs(proj_v - alignBot) < thresholdPx * 0.7) cand_v = alignBot;
-        else if (Math.abs(proj_v - alignMid) < thresholdPx * 0.7) cand_v = alignMid;
+    // 1. Ściana PRAWA -> proj_u powinno wynosić O_w
+    {
+      const cand_u = O_w;
+      const alignTop = 0;
+      const alignBot = O_h - T_h_local;
+      const alignMid = (O_h - T_h_local) / 2;
 
-        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
-      }
+      let cand_v = proj_v;
+      if (Math.abs(proj_v - alignTop) < thresholdPx * 1.5) cand_v = alignTop;
+      else if (Math.abs(proj_v - alignBot) < thresholdPx * 1.5) cand_v = alignBot;
+      else if (Math.abs(proj_v - alignMid) < thresholdPx * 1.5) cand_v = alignMid;
 
-      // 2. Ściana LEWA (Target po lewej) -> proj_u powinno wynosić -T_w
-      {
-        const cand_u = -T_w;
-        const alignTop = 0;
-        const alignBot = O_h - T_h;
-        const alignMid = (O_h - T_h) / 2;
+      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    }
 
-        let cand_v = proj_v;
-        if (Math.abs(proj_v - alignTop) < thresholdPx * 0.7) cand_v = alignTop;
-        else if (Math.abs(proj_v - alignBot) < thresholdPx * 0.7) cand_v = alignBot;
-        else if (Math.abs(proj_v - alignMid) < thresholdPx * 0.7) cand_v = alignMid;
+    // 2. Ściana LEWA -> proj_u powinno wynosić -T_w_local
+    {
+      const cand_u = -T_w_local;
+      const alignTop = 0;
+      const alignBot = O_h - T_h_local;
+      const alignMid = (O_h - T_h_local) / 2;
 
-        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
-      }
+      let cand_v = proj_v;
+      if (Math.abs(proj_v - alignTop) < thresholdPx * 1.5) cand_v = alignTop;
+      else if (Math.abs(proj_v - alignBot) < thresholdPx * 1.5) cand_v = alignBot;
+      else if (Math.abs(proj_v - alignMid) < thresholdPx * 1.5) cand_v = alignMid;
 
-      // 3. Ściana DOLNA (Target poniżej) -> proj_v powinno wynosić O_h
-      {
-        const cand_v = O_h;
-        const alignLeft = 0;
-        const alignRight = O_w - T_w;
-        const alignMid = (O_w - T_w) / 2;
+      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    }
 
-        let cand_u = proj_u;
-        if (Math.abs(proj_u - alignLeft) < thresholdPx * 0.7) cand_u = alignLeft;
-        else if (Math.abs(proj_u - alignRight) < thresholdPx * 0.7) cand_u = alignRight;
-        else if (Math.abs(proj_u - alignMid) < thresholdPx * 0.7) cand_u = alignMid;
+    // 3. Ściana DOLNA -> proj_v powinno wynosić O_h
+    {
+      const cand_v = O_h;
+      const alignLeft = 0;
+      const alignRight = O_w - T_w_local;
+      const alignMid = (O_w - T_w_local) / 2;
 
-        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
-      }
+      let cand_u = proj_u;
+      if (Math.abs(proj_u - alignLeft) < thresholdPx * 1.5) cand_u = alignLeft;
+      else if (Math.abs(proj_u - alignRight) < thresholdPx * 1.5) cand_u = alignRight;
+      else if (Math.abs(proj_u - alignMid) < thresholdPx * 1.5) cand_u = alignMid;
 
-      // 4. Ściana GÓRNA (Target powyżej) -> proj_v powinno wynosić -T_h
-      {
-        const cand_v = -T_h;
-        const alignLeft = 0;
-        const alignRight = O_w - T_w;
-        const alignMid = (O_w - T_w) / 2;
+      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    }
 
-        let cand_u = proj_u;
-        if (Math.abs(proj_u - alignLeft) < thresholdPx * 0.7) cand_u = alignLeft;
-        else if (Math.abs(proj_u - alignRight) < thresholdPx * 0.7) cand_u = alignRight;
-        else if (Math.abs(proj_u - alignMid) < thresholdPx * 0.7) cand_u = alignMid;
+    // 4. Ściana GÓRNA -> proj_v powinno wynosić -T_h_local
+    {
+      const cand_v = -T_h_local;
+      const alignLeft = 0;
+      const alignRight = O_w - T_w_local;
+      const alignMid = (O_w - T_w_local) / 2;
 
-        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
-      }
+      let cand_u = proj_u;
+      if (Math.abs(proj_u - alignLeft) < thresholdPx * 1.5) cand_u = alignLeft;
+      else if (Math.abs(proj_u - alignRight) < thresholdPx * 1.5) cand_u = alignRight;
+      else if (Math.abs(proj_u - alignMid) < thresholdPx * 1.5) cand_u = alignMid;
 
-      // Wybierz najbliższego bezkolizyjnego kandydata z tej czwórki
-      for (const cand of candidates) {
-        const snapX = O_x + cand.proj_u * u.x + cand.proj_v * v.x;
-        const snapY = O_y + cand.proj_u * u.y + cand.proj_v * v.y;
-        const dist = Math.hypot(snapX - targetTeam.x, snapY - targetTeam.y);
+      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    }
 
-        if (dist < minDistance) {
-          const testNode = {
-            ...targetTeam,
+    // Wybierz najbliższego bezkolizyjnego kandydata z tej czwórki
+    for (const cand of candidates) {
+      const snapX = O_x + cand.proj_u * u.x + cand.proj_v * v.x;
+      const snapY = O_y + cand.proj_u * u.y + cand.proj_v * v.y;
+      const dist = Math.hypot(snapX - targetTeam.x, snapY - targetTeam.y);
+
+      if (dist < minDistance) {
+        const testNode = {
+          ...targetTeam,
+          x: snapX,
+          y: snapY,
+          rotation: cand.rot,
+        };
+        const collision = checkTeamCollidesWithOthers(testNode, allTeams, pixelsPerMeter, targetTeam.id);
+        if (!collision || collision === other.id) {
+          minDistance = dist;
+          bestCandidate = {
             x: snapX,
             y: snapY,
             rotation: cand.rot,
+            snappedToId: other.id,
           };
-          const collision = checkTeamCollidesWithOthers(testNode, allTeams, pixelsPerMeter, targetTeam.id);
-          if (!collision || collision === other.id) {
-            minDistance = dist;
-            bestCandidate = {
-              x: snapX,
-              y: snapY,
-              rotation: cand.rot,
-              snappedToId: other.id,
-            };
-          }
         }
       }
     }

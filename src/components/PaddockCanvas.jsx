@@ -224,7 +224,7 @@ function PaddockCanvas({
         newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
       }
       if (enableMagnet) {
-        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 4.0);
+        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 4.5);
         if (snapped) {
           newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
         }
@@ -255,7 +255,7 @@ function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.0);
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -304,12 +304,27 @@ function PaddockCanvas({
     const target = placedTeams.find((t) => t.id === selectedTeamId);
     if (!target) return;
 
-    const candidate = {
+    let candidate = {
       ...target,
       x: node.x(),
       y: node.y(),
       rotation: Math.round(node.rotation() * 10) / 10,
     };
+
+    if (enableMagnet) {
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+      if (snapped) {
+        candidate = {
+          ...candidate,
+          x: snapped.x,
+          y: snapped.y,
+          rotation: snapped.rotation !== undefined ? snapped.rotation : candidate.rotation,
+        };
+        node.x(candidate.x);
+        node.y(candidate.y);
+        node.rotation(candidate.rotation);
+      }
+    }
 
     const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
     if (!allowCollisions && collidedId) {
@@ -338,11 +353,23 @@ function PaddockCanvas({
     const target = placedTeams.find((t) => t.id === selectedTeamId);
     if (!target) return;
 
-    const candidate = {
+    let candidate = {
       ...target,
       x: target.x + dxPx,
       y: target.y + dyPx,
     };
+
+    if (enableMagnet) {
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+      if (snapped) {
+        candidate = {
+          ...candidate,
+          x: snapped.x,
+          y: snapped.y,
+          rotation: snapped.rotation !== undefined ? snapped.rotation : candidate.rotation,
+        };
+      }
+    }
 
     const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
     if (!allowCollisions && collidedId) {
@@ -546,7 +573,7 @@ function PaddockCanvas({
                     y: e.target.y(),
                   };
                   if (enableMagnet) {
-                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 3.5);
+                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
                     if (snapped) {
                       candidate = {
                         ...candidate,
