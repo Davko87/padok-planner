@@ -460,22 +460,29 @@ function PaddockCanvas({
             const pxWidth = team.widthMeters * pixelsPerMeter;
             const pxHeight = team.heightMeters * pixelsPerMeter;
             
-            // Eleganckie dobieranie czcionek bez nakładania się i bez rozrywania liter (wrap="none")
+            // Skalowanie do szerokości prostokąta (w poziomie, bez łamania słów)
             const nameLen = Math.max(1, (team.name || '').length);
             const dimText = `${team.widthMeters}×${team.heightMeters}m`;
             const dimLen = Math.max(1, dimText.length);
 
-            // Skalowanie do szerokości prostokąta, by tekst mieścił się w 1 linii bez zwijania
-            const maxNameSizeByWidth = (pxWidth - 4) / (nameLen * 0.62);
+            const maxNameSizeByWidth = (pxWidth - 6) / (nameLen * 0.6);
             const maxDimSizeByWidth = (pxWidth - 4) / (dimLen * 0.58);
 
-            const nameFontSize = Math.max(8, Math.min(16, Math.min(pxHeight * 0.2, maxNameSizeByWidth)));
+            // Nazwa skalowana do wielkości kontenera (bez sztucznego limitu 16px, by rosła z kontenerem!)
+            const nameFontSize = Math.max(5, Math.min(pxHeight * 0.28, maxNameSizeByWidth));
+            
+            // Wymiary pozostają tak, jak są - czytelne i zgrabne w tej pozycji na dole
             const dimFontSize = Math.max(7, Math.min(13, Math.min(pxHeight * 0.16, maxDimSizeByWidth)));
 
             const totalTextHeight = nameFontSize + dimFontSize;
             const availableGap = pxHeight - totalTextHeight;
             const topPad = Math.max(3, Math.min(availableGap * 0.35, pxHeight * 0.08));
             const botPad = Math.max(3, Math.min(availableGap * 0.35, pxHeight * 0.08));
+
+            // Widoczność nazwy uzależniona od zooma (stageScale): z daleka nazwa znika, z bliska staje się czytelna
+            const apparentNameSize = nameFontSize * stageScale;
+            const isNameVisible = apparentNameSize >= 4.5;
+            const nameOpacity = Math.min(1, Math.max(0, (apparentNameSize - 4.5) / 3));
 
             return (
               <Group
@@ -527,7 +534,7 @@ function PaddockCanvas({
                   shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
                 />
 
-                {/* Nazwa teamu - u góry prostokąta, JEDNA linia (wrap="none") */}
+                {/* Nazwa teamu - w poziomie kontenera, skalowana z jego wielkością i zależna od zooma */}
                 <Text
                   text={team.name}
                   x={0}
@@ -539,10 +546,12 @@ function PaddockCanvas({
                   fontFamily="Inter, system-ui, sans-serif"
                   fontStyle="bold"
                   wrap="none"
+                  visible={isNameVisible}
+                  opacity={nameOpacity}
                   listening={false}
                 />
 
-                {/* Wymiary fizyczne w metrach - na dole prostokąta, JEDNA linia (wrap="none") */}
+                {/* Wymiary fizyczne w metrach - na dole prostokąta, w tej pozycji jak są */}
                 <Text
                   text={dimText}
                   x={0}
