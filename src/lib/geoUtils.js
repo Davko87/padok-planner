@@ -276,115 +276,117 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     const O_h = other.heightMeters * pixelsPerMeter;
     const O_rot = other.rotation || 0;
 
-    // Szybki odsiew odległości (Bounding sphere / center distance)
     const centerT = { x: targetTeam.x + T_w / 2, y: targetTeam.y + T_h / 2 };
     const centerO = { x: O_x + O_w / 2, y: O_y + O_h / 2 };
     const approxDist = Math.hypot(centerT.x - centerO.x, centerT.y - centerO.y);
-    if (approxDist > Math.max(T_w, T_h) + Math.max(O_w, O_h) + thresholdPx) {
+    if (approxDist > Math.max(T_w, T_h) + Math.max(O_w, O_h) + thresholdPx * 2) {
       continue;
     }
 
-    // Wersory lokalnego układu współrzędnych sąsiada (O)
     const rad = (O_rot * Math.PI) / 180;
     const u = { x: Math.cos(rad), y: Math.sin(rad) };
     const v = { x: -Math.sin(rad), y: Math.cos(rad) };
 
-    // Rzut aktualnego położenia targetu (T.x, T.y) względem początku sąsiada (O.x, O.y)
     const dx = targetTeam.x - O_x;
     const dy = targetTeam.y - O_y;
     const proj_u = dx * u.x + dy * u.y;
     const proj_v = dx * v.x + dy * v.y;
 
-    // Automatyczna synchronizacja kąta do najbliższej wielokrotności 90 stopni względem O_rot (z bezpiecznym modulo)
     const diff0 = getShortestAngleDiff(T_rot, O_rot);
     const diff90 = getShortestAngleDiff(T_rot, O_rot + 90);
     const diff180 = getShortestAngleDiff(T_rot, O_rot + 180);
     const diff270 = getShortestAngleDiff(T_rot, O_rot + 270);
 
     let targetSnappedRot = O_rot;
-    let isRotated90 = false;
+    let relRot = 0;
     if (diff0 <= diff90 && diff0 <= diff180 && diff0 <= diff270) {
       targetSnappedRot = O_rot;
-      isRotated90 = false;
+      relRot = 0;
     } else if (diff90 <= diff180 && diff90 <= diff270) {
       targetSnappedRot = (O_rot + 90) % 360;
-      isRotated90 = true;
+      relRot = 90;
     } else if (diff180 <= diff270) {
       targetSnappedRot = (O_rot + 180) % 360;
-      isRotated90 = false;
+      relRot = 180;
     } else {
       targetSnappedRot = (O_rot + 270) % 360;
-      isRotated90 = true;
+      relRot = 270;
     }
 
-    // Oblicz wymiary przesuwanego namiotu w układzie lokalnym sąsiada
-    const T_w_local = isRotated90 ? T_h : T_w;
-    const T_h_local = isRotated90 ? T_w : T_h;
-
-    const candidates = [];
-
-    // 1. Ściana PRAWA -> proj_u powinno wynosić O_w
-    {
-      const cand_u = O_w;
-      const alignTop = 0;
-      const alignBot = O_h - T_h_local;
-      const alignMid = (O_h - T_h_local) / 2;
-
-      let cand_v = proj_v;
-      if (Math.abs(proj_v - alignTop) < thresholdPx * 1.5) cand_v = alignTop;
-      else if (Math.abs(proj_v - alignBot) < thresholdPx * 1.5) cand_v = alignBot;
-      else if (Math.abs(proj_v - alignMid) < thresholdPx * 1.5) cand_v = alignMid;
-
-      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    // Dokładne interwały [u_min_rel, u_max_rel] i [v_min_rel, v_max_rel] zajmowane przez target po obrocie względem jego punktu (x,y)
+    let u_min_rel = 0, u_max_rel = T_w, v_min_rel = 0, v_max_rel = T_h;
+    if (relRot === 90) {
+      u_min_rel = -T_h; u_max_rel = 0;
+      v_min_rel = 0; v_max_rel = T_w;
+    } else if (relRot === 180) {
+      u_min_rel = -T_w; u_max_rel = 0;
+      v_min_rel = -T_h; v_max_rel = 0;
+    } else if (relRot === 270) {
+      u_min_rel = 0; u_max_rel = T_h;
+      v_min_rel = -T_w; v_max_rel = 0;
     }
 
-    // 2. Ściana LEWA -> proj_u powinno wynosić -T_w_local
-    {
-      const cand_u = -T_w_local;
-      const alignTop = 0;
-      const alignBot = O_h - T_h_local;
-      const alignMid = (O_h - T_h_local) / 2;
+    // Linie przylegania (ściany) tak, by kontener znajdował się dokładnie na zewnątrz sąsiada
+    const cand_u_right = O_w - u_min_rel;
+    const cand_u_left = -u_max_rel;
+    const cand_v_bottom = O_h - v_min_rel;
+    const cand_v_top = -v_max_rel;
 
-      let cand_v = proj_v;
-      if (Math.abs(proj_v - alignTop) < thresholdPx * 1.5) cand_v = alignTop;
-      else if (Math.abs(proj_v - alignBot) < thresholdPx * 1.5) cand_v = alignBot;
-      else if (Math.abs(proj_v - alignMid) < thresholdPx * 1.5) cand_v = alignMid;
+    // Linie wyrównania (krawędzie góra/dół/lewo/prawo oraz środki)
+    const align_u_left = -u_min_rel;
+    const align_u_right = O_w - u_max_rel;
+    const align_u_mid = O_w / 2 - (u_min_rel + u_max_rel) / 2;
 
-      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    const align_v_top = -v_min_rel;
+    const align_v_bot = O_h - v_max_rel;
+    const align_v_mid = O_h / 2 - (v_min_rel + v_max_rel) / 2;
+
+    const candidatesToTest = [];
+
+    // 1. Dociągnięcie do PRAWEJ lub LEWEJ ściany (z jednoczesnym wyrównaniem lub dociągnięciem góra/dół)
+    for (const u_val of [cand_u_right, cand_u_left]) {
+      if (Math.abs(proj_u - u_val) < thresholdPx * 1.5) {
+        let v_val = proj_v;
+        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
+          if (Math.abs(proj_v - av) < thresholdPx * 1.5) {
+            v_val = av;
+            break;
+          }
+        }
+        candidatesToTest.push({ proj_u: u_val, proj_v: v_val, rot: targetSnappedRot });
+      }
     }
 
-    // 3. Ściana DOLNA -> proj_v powinno wynosić O_h
-    {
-      const cand_v = O_h;
-      const alignLeft = 0;
-      const alignRight = O_w - T_w_local;
-      const alignMid = (O_w - T_w_local) / 2;
-
-      let cand_u = proj_u;
-      if (Math.abs(proj_u - alignLeft) < thresholdPx * 1.5) cand_u = alignLeft;
-      else if (Math.abs(proj_u - alignRight) < thresholdPx * 1.5) cand_u = alignRight;
-      else if (Math.abs(proj_u - alignMid) < thresholdPx * 1.5) cand_u = alignMid;
-
-      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    // 2. Dociągnięcie do DOLNEJ lub GÓRNEJ ściany (z jednoczesnym wyrównaniem lub dociągnięciem lewo/prawo)
+    for (const v_val of [cand_v_bottom, cand_v_top]) {
+      if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
+        let u_val = proj_u;
+        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
+          if (Math.abs(proj_u - au) < thresholdPx * 1.5) {
+            u_val = au;
+            break;
+          }
+        }
+        candidatesToTest.push({ proj_u: u_val, proj_v: v_val, rot: targetSnappedRot });
+      }
     }
 
-    // 4. Ściana GÓRNA -> proj_v powinno wynosić -T_h_local
-    {
-      const cand_v = -T_h_local;
-      const alignLeft = 0;
-      const alignRight = O_w - T_w_local;
-      const alignMid = (O_w - T_w_local) / 2;
-
-      let cand_u = proj_u;
-      if (Math.abs(proj_u - alignLeft) < thresholdPx * 1.5) cand_u = alignLeft;
-      else if (Math.abs(proj_u - alignRight) < thresholdPx * 1.5) cand_u = alignRight;
-      else if (Math.abs(proj_u - alignMid) < thresholdPx * 1.5) cand_u = alignMid;
-
-      candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: targetSnappedRot });
+    // 3. Wyrównanie wzdłuż krawędzi bez przylegania do ściany (gdy oba są obok siebie na tej samej linii)
+    for (const u_val of [align_u_left, align_u_right]) {
+      if (Math.abs(proj_u - u_val) < thresholdPx * 1.2) {
+        let v_val = proj_v;
+        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
+          if (Math.abs(proj_v - av) < thresholdPx * 1.5) {
+            v_val = av;
+            break;
+          }
+        }
+        candidatesToTest.push({ proj_u: u_val, proj_v: v_val, rot: targetSnappedRot });
+      }
     }
 
-    // Wybierz najbliższego bezkolizyjnego kandydata z tej czwórki
-    for (const cand of candidates) {
+    // Wybór najlepszego bezkolizyjnego kandydata od tego sąsiada
+    for (const cand of candidatesToTest) {
       const snapX = O_x + cand.proj_u * u.x + cand.proj_v * v.x;
       const snapY = O_y + cand.proj_u * u.y + cand.proj_v * v.y;
       const dist = Math.hypot(snapX - targetTeam.x, snapY - targetTeam.y);
@@ -405,6 +407,77 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
             rotation: cand.rot,
             snappedToId: other.id,
           };
+        }
+      }
+    }
+  }
+
+  // WSPÓŁDZIAŁANIE Z DRUGIM SĄSIADEM NA RAZ (np. gdy Audi przylega dolną krawędzią do BMW, a lewą lub prawą do drugiego Audi)
+  if (bestCandidate !== null) {
+    const rad = (bestCandidate.rotation * Math.PI) / 180;
+    const u = { x: Math.cos(rad), y: Math.sin(rad) };
+    const v = { x: -Math.sin(rad), y: Math.cos(rad) };
+
+    const dx_best = bestCandidate.x;
+    const dy_best = bestCandidate.y;
+
+    for (const other of allTeams) {
+      if (other.id === targetTeam.id || other.id === bestCandidate.snappedToId) continue;
+      const O_x = other.x;
+      const O_y = other.y;
+      const O_w = other.widthMeters * pixelsPerMeter;
+      const O_h = other.heightMeters * pixelsPerMeter;
+      const O_rot = other.rotation || 0;
+
+      const diff0 = getShortestAngleDiff(bestCandidate.rotation, O_rot);
+      const diff90 = getShortestAngleDiff(bestCandidate.rotation, O_rot + 90);
+      const diff180 = getShortestAngleDiff(bestCandidate.rotation, O_rot + 180);
+      const diff270 = getShortestAngleDiff(bestCandidate.rotation, O_rot + 270);
+      const minDiff = Math.min(diff0, diff90, diff180, diff270);
+      if (minDiff > 25) continue;
+
+      let relRot = 0;
+      if (diff0 === minDiff) relRot = 0;
+      else if (diff90 === minDiff) relRot = 90;
+      else if (diff180 === minDiff) relRot = 180;
+      else relRot = 270;
+
+      let u_min_rel = 0, u_max_rel = T_w, v_min_rel = 0, v_max_rel = T_h;
+      if (relRot === 90) { u_min_rel = -T_h; u_max_rel = 0; v_min_rel = 0; v_max_rel = T_w; }
+      else if (relRot === 180) { u_min_rel = -T_w; u_max_rel = 0; v_min_rel = -T_h; v_max_rel = 0; }
+      else if (relRot === 270) { u_min_rel = 0; u_max_rel = T_h; v_min_rel = -T_w; v_max_rel = 0; }
+
+      const dx = bestCandidate.x - O_x;
+      const dy = bestCandidate.y - O_y;
+      const o_proj_u = dx * u.x + dy * u.y;
+      const o_proj_v = dx * v.x + dy * v.y;
+
+      const cand_u_list = [O_w - u_min_rel, -u_max_rel, -u_min_rel, O_w - u_max_rel];
+      const cand_v_list = [O_h - v_min_rel, -v_max_rel, -v_min_rel, O_h - v_max_rel];
+
+      for (const cu of cand_u_list) {
+        if (Math.abs(o_proj_u - cu) < thresholdPx * 1.5) {
+          const testX = O_x + cu * u.x + o_proj_v * v.x;
+          const testY = O_y + cu * u.y + o_proj_v * v.y;
+          const testNode = { ...targetTeam, x: testX, y: testY, rotation: bestCandidate.rotation };
+          if (!checkTeamCollidesWithOthers(testNode, allTeams, pixelsPerMeter, targetTeam.id)) {
+            bestCandidate.x = testX;
+            bestCandidate.y = testY;
+            break;
+          }
+        }
+      }
+
+      for (const cv of cand_v_list) {
+        if (Math.abs(o_proj_v - cv) < thresholdPx * 1.5) {
+          const testX = O_x + o_proj_u * u.x + cv * v.x;
+          const testY = O_y + o_proj_u * u.y + cv * v.y;
+          const testNode = { ...targetTeam, x: testX, y: testY, rotation: bestCandidate.rotation };
+          if (!checkTeamCollidesWithOthers(testNode, allTeams, pixelsPerMeter, targetTeam.id)) {
+            bestCandidate.x = testX;
+            bestCandidate.y = testY;
+            break;
+          }
         }
       }
     }
