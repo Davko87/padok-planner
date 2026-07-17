@@ -17,6 +17,7 @@ function PlannerPage() {
   const [placedTeams, setPlacedTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
+  const getViewportCenterRef = useRef(null);
 
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
@@ -231,6 +232,17 @@ function PlannerPage() {
     const imgW = 1024;
     const ppm = imgW / physicalWidth;
 
+    let targetX = (physicalWidth * ppm) / 2;
+    let targetY = (physicalHeight * ppm) / 2;
+
+    if (getViewportCenterRef.current) {
+      const center = getViewportCenterRef.current();
+      if (center && typeof center.x === 'number' && !isNaN(center.x)) {
+        targetX = center.x;
+        targetY = center.y;
+      }
+    }
+
     let newTeamNode = {
       id: 'team_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       templateId: teamTemplate.id || 'custom',
@@ -238,8 +250,8 @@ function PlannerPage() {
       color: teamTemplate.color || '#3b82f6',
       widthMeters,
       heightMeters,
-      x: (physicalWidth * ppm) / 2 - (widthMeters * ppm) / 2,
-      y: (physicalHeight * ppm) / 2 - (heightMeters * ppm) / 2,
+      x: targetX - (widthMeters * ppm) / 2,
+      y: targetY - (heightMeters * ppm) / 2,
       rotation: 0,
     };
 
@@ -280,6 +292,7 @@ function PlannerPage() {
         onSelectTeam={setSelectedTeamId}
         allowCollisions={allowCollisions}
         onToggleCollisions={() => setAllowCollisions((v) => !v)}
+        getViewportCenterRef={getViewportCenterRef}
       />
 
       {/* Top bar (nałożony nad canvasem z Zadaniami 1, 5, 6, 7) */}

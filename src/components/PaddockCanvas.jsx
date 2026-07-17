@@ -12,6 +12,7 @@ function PaddockCanvas({
   onSelectTeam,
   allowCollisions = false,
   onToggleCollisions,
+  getViewportCenterRef,
 }) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -21,6 +22,20 @@ function PaddockCanvas({
 
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
+
+  // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
+  useEffect(() => {
+    if (getViewportCenterRef) {
+      getViewportCenterRef.current = () => {
+        const stage = stageRef.current;
+        if (!stage) return null;
+        const screenCenter = { x: stage.width() / 2, y: stage.height() / 2 };
+        const transform = stage.getAbsoluteTransform().copy();
+        transform.invert();
+        return transform.point(screenCenter);
+      };
+    }
+  });
 
   // Zapisuj ostatnie prawidłowe (bezkolizyjne) współrzędne dla naczep
   useEffect(() => {
@@ -444,7 +459,12 @@ function PaddockCanvas({
             const isColliding = collidingTeamIds.includes(team.id);
             const pxWidth = team.widthMeters * pixelsPerMeter;
             const pxHeight = team.heightMeters * pixelsPerMeter;
-            const fontSize = Math.max(10, Math.min(18, Math.min(pxWidth, pxHeight) * 0.25));
+            
+            // Eleganckie dobieranie czcionek bez nakładania się
+            const nameFontSize = Math.max(7, Math.min(15, Math.min(pxWidth * 0.22, pxHeight * 0.15)));
+            const dimFontSize = Math.max(6, Math.min(12, Math.min(pxWidth * 0.18, pxHeight * 0.12)));
+            const topPad = Math.max(3, pxHeight * 0.05);
+            const botPad = Math.max(3, pxHeight * 0.05);
 
             return (
               <Group
@@ -496,31 +516,32 @@ function PaddockCanvas({
                   shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
                 />
 
-                {/* Nazwa teamu */}
+                {/* Nazwa teamu - u góry prostokąta, mniejsza i elegancka */}
                 <Text
                   text={team.name}
                   x={2}
-                  y={pxHeight / 2 - fontSize * 0.9}
-                  width={pxWidth - 4}
+                  y={topPad}
+                  width={Math.max(10, pxWidth - 4)}
                   align="center"
-                  verticalAlign="middle"
                   fill="#ffffff"
-                  fontSize={fontSize}
+                  fontSize={nameFontSize}
                   fontFamily="Inter, system-ui, sans-serif"
                   fontStyle="bold"
+                  wrap="word"
                   listening={false}
                 />
 
-                {/* Wymiary fizyczne w metrach na dole prostokąta */}
+                {/* Wymiary fizyczne w metrach - na samym dole prostokąta */}
                 <Text
                   text={`${team.widthMeters}×${team.heightMeters}m`}
                   x={2}
-                  y={pxHeight / 2 + fontSize * 0.3}
-                  width={pxWidth - 4}
+                  y={pxHeight - dimFontSize - botPad - 2}
+                  width={Math.max(10, pxWidth - 4)}
                   align="center"
-                  fill="rgba(255, 255, 255, 0.75)"
-                  fontSize={Math.max(8, fontSize * 0.7)}
+                  fill="rgba(255, 255, 255, 0.85)"
+                  fontSize={dimFontSize}
                   fontFamily="monospace"
+                  fontStyle="bold"
                   listening={false}
                 />
               </Group>
