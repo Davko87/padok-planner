@@ -4,20 +4,6 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters } from '../lib/geoUtils.js';
 
-// Pełna baza najpopularniejszych torów wyścigowych w Polsce i Europie
-export const TRACK_DATABASE = [
-  { id: 'tor-poznan', name: 'Tor Poznań — Padok Główny', city: 'Poznań, Polska', coords: [16.7962, 52.4185], w: 250, h: 180, bbox: '16.7942,52.4170,16.7982,52.4200' },
-  { id: 'silesia-ring', name: 'Silesia Ring — Padok Główny', city: 'Kamień Śląski, Polska', coords: [18.0960, 50.5330], w: 300, h: 200, bbox: '18.0930,50.5310,18.0990,50.5350' },
-  { id: 'tor-modlin', name: 'Tor Modlin — Padok Sportowy', city: 'Modlin, Polska', coords: [20.6710, 52.4645], w: 200, h: 150, bbox: '20.6690,52.4630,20.6730,52.4660' },
-  { id: 'tor-lodz', name: 'Tor Łódź — Ośrodek Doskonalenia', city: 'Stryków, Polska', coords: [19.5845, 51.8755], w: 180, h: 120, bbox: '19.5820,51.8740,19.5870,51.8770' },
-  { id: 'tor-jastrzab', name: 'Autodrom Jastrząb — Padok', city: 'Jastrząb, Polska', coords: [20.9495, 51.2475], w: 220, h: 160, bbox: '20.9470,51.2460,20.9520,51.2490' },
-  { id: 'tor-krakow', name: 'Moto Park Kraków — Padok', city: 'Kraków, Polska', coords: [20.0830, 50.0425], w: 160, h: 110, bbox: '20.0810,50.0410,20.0850,50.0440' },
-  { id: 'nurburgring', name: 'Nürburgring GP — Grand Prix Paddock', city: 'Nürburg, Niemcy', coords: [6.9455, 50.3340], w: 350, h: 250, bbox: '6.9420,50.3320,6.9490,50.3360' },
-  { id: 'spa', name: 'Circuit de Spa-Francorchamps — F1 Paddock', city: 'Stavelot, Belgia', coords: [5.9735, 50.4370], w: 400, h: 250, bbox: '5.9700,50.4350,5.9770,50.4390' },
-  { id: 'monza', name: 'Autodromo Nazionale Monza — Paddock', city: 'Monza, Włochy', coords: [9.2875, 45.6190], w: 380, h: 240, bbox: '9.2840,45.6170,9.2910,45.6210' },
-  { id: 'silverstone', name: 'Silverstone Circuit — Wing Paddock', city: 'Silverstone, Wielka Brytania', coords: [-1.0170, 52.0740], w: 420, h: 260, bbox: '-1.0210,52.0720,-1.0130,52.0760' }
-];
-
 function HomePage() {
   const navigate = useNavigate();
   
@@ -27,13 +13,15 @@ function HomePage() {
   const paddockMapContainerRef = useRef(null);
   const paddockMapInstanceRef = useRef(null);
 
-  // Warstwy i markery wielokąta w trybie kadrowania
+  // Warstwy i markery wielokąta w trybie kadrowania (Polygon Lasso)
   const polygonLayerRef = useRef(null);
+  const polylineLayerRef = useRef(null);
   const vertexMarkersRef = useRef([]);
+  const tileLayerRef = useRef(null);
 
-  // Wyszukiwarka na całej kuli ziemskiej
+  // Wyszukiwarka na całej kuli ziemskiej w stylu Google Maps
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState(TRACK_DATABASE);
+  const [searchResults, setSearchResults] = useState([]);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [isGlobeReady, setIsGlobeReady] = useState(false);
@@ -44,8 +32,9 @@ function HomePage() {
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [isCustomFramingMode, setIsCustomFramingMode] = useState(false);
   
-  // Rogi wielokąta do kadrowania w formacie [[lat, lng], [lat, lng], ...]
+  // Rysowanie wielokąta punkt po punkcie: [[lat, lng], ...] oraz czy obwód został zamknięty
   const [polygonPoints, setPolygonPoints] = useState([]);
+  const [isPolygonClosed, setIsPolygonClosed] = useState(false);
 
   const [showCustomBoundsModal, setShowCustomBoundsModal] = useState(false);
   const [confirmedBounds, setConfirmedBounds] = useState(null);
@@ -55,99 +44,100 @@ function HomePage() {
   // Warstwa mapy: 'satellite-streets' (Google Hybryda z nazwami ulic) | 'satellite' (Esri HD) | 'street' (OSM)
   const [mapLayerType, setMapLayerType] = useState('satellite-streets');
 
-  // Wyszukiwanie w czasie rzeczywistym (baza torów + darmowy geocoder OpenStreetMap Nominatim dla CAŁEGO ŚWIATA)
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults(TRACK_DATABASE);
-      return;
-    }
+  // Funkcja pomocnicza do czyszczenia i elastycznego wyszukiwania adresów (z tolerancją na przecinki, numery i spacje)
+  const fetchGeocodingResults = async (queryText) => {
+    const cleaned = queryText.replace(/\s+/g, ' ').trim();
+    if (cleaned.length < 3) return [];
 
-    const queryLower = searchQuery.toLowerCase();
-    const localMatches = TRACK_DATABASE.filter(
-      t => t.name.toLowerCase().includes(queryLower) || t.city.toLowerCase().includes(queryLower)
-    );
+    try {
+      // 1. Próba wyszukiwania dokładnego (z przecinkami lub bez)
+      let resp = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleaned)}&addressdetails=1&limit=5`,
+        { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
+      );
+      let data = resp.ok ? await resp.json() : [];
 
-    setSearchResults(localMatches);
-
-    const timer = setTimeout(async () => {
-      if (searchQuery.length >= 3) {
-        setIsSearchingOnline(true);
-        try {
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`,
+      // 2. Jeśli brak wyników, a zapytanie ma numer lub przecinek (np. "Lipowa 148, Poznań" -> "Lipowa, Poznań" lub "Poznań Lipowa")
+      if (data.length === 0 && (cleaned.includes(',') || /\d+/.test(cleaned))) {
+        const withoutNumbers = cleaned.replace(/\d+[a-zA-Z]?/g, '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        if (withoutNumbers.length >= 3 && withoutNumbers !== cleaned) {
+          resp = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(withoutNumbers)}&addressdetails=1&limit=5`,
             { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
           );
           if (resp.ok) {
-            const data = await resp.json();
-            const osmResults = data.map((item, idx) => ({
-              id: `osm-${item.place_id || idx}`,
-              name: item.display_name.split(',')[0] + (item.display_name.split(',')[1] ? ` (${item.display_name.split(',')[1].trim()})` : ''),
-              city: item.display_name.split(',').slice(-2).join(', ').trim(),
-              coords: [parseFloat(item.lon), parseFloat(item.lat)],
-              w: 250,
-              h: 180,
-              bbox: `${parseFloat(item.lon)-0.003},${parseFloat(item.lat)-0.002},${parseFloat(item.lon)+0.003},${parseFloat(item.lat)+0.002}`,
-              isCustomAddress: true
-            }));
-            setSearchResults(prev => [
-              ...prev.filter(p => !p.isCustomAddress),
-              ...osmResults
-            ]);
+            data = await resp.json();
           }
-        } catch (err) {
-          console.warn('Błąd wyszukiwania Nominatim:', err);
-        } finally {
-          setIsSearchingOnline(false);
         }
       }
-    }, 400);
+
+      return data.map((item, idx) => {
+        const addr = item.address || {};
+        const road = addr.road || addr.pedestrian || addr.street || addr.suburb || '';
+        const houseNumber = addr.house_number || '';
+        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+        const state = addr.state || addr.country || '';
+
+        let mainName = item.display_name.split(',')[0];
+        if (road) {
+          mainName = houseNumber ? `${road} ${houseNumber}` : road;
+        }
+
+        let subName = [city, state].filter(Boolean).join(', ');
+        if (!subName) {
+          subName = item.display_name.split(',').slice(1, 3).join(', ').trim();
+        }
+
+        return {
+          id: `osm-${item.place_id || idx}-${Date.now()}`,
+          name: mainName,
+          city: subName,
+          coords: [parseFloat(item.lon), parseFloat(item.lat)],
+          w: 250,
+          h: 180,
+          bbox: `${parseFloat(item.lon)-0.003},${parseFloat(item.lat)-0.002},${parseFloat(item.lon)+0.003},${parseFloat(item.lat)+0.002}`,
+          isCustomAddress: true
+        };
+      });
+    } catch (err) {
+      console.warn('Błąd geokodowania Nominatim:', err);
+      return [];
+    }
+  };
+
+  // Wyszukiwanie w czasie rzeczywistym z debounce
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 3) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingOnline(true);
+      const results = await fetchGeocodingResults(searchQuery);
+      setSearchResults(results);
+      setIsSearchingOnline(false);
+    }, 450);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Obsługa naciśnięcia klawisza Enter w wyszukiwarce lub kliknięcia przycisku Szukaj
+  // Obsługa naciśnięcia klawisza Enter w wyszukiwarce
   const handleSearchEnter = async () => {
     if (!searchQuery.trim()) return;
     setShowDropdown(false);
 
-    const queryLower = searchQuery.toLowerCase();
-    const localMatch = TRACK_DATABASE.find(
-      t => t.name.toLowerCase().includes(queryLower) || t.city.toLowerCase().includes(queryLower)
-    );
-
-    if (localMatch) {
-      triggerCinematicZoomToTrack(localMatch);
-      return;
-    }
-
     setIsSearchingOnline(true);
     try {
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`,
-        { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data.length > 0) {
-          const item = data[0];
-          const osmTrack = {
-            id: `osm-${item.place_id || Date.now()}`,
-            name: item.display_name.split(',')[0] + (item.display_name.split(',')[1] ? ` (${item.display_name.split(',')[1].trim()})` : ''),
-            city: item.display_name.split(',').slice(-2).join(', ').trim(),
-            coords: [parseFloat(item.lon), parseFloat(item.lat)],
-            w: 250,
-            h: 180,
-            bbox: `${parseFloat(item.lon)-0.003},${parseFloat(item.lat)-0.002},${parseFloat(item.lon)+0.003},${parseFloat(item.lat)+0.002}`,
-            isCustomAddress: true
-          };
-          triggerCinematicZoomToTrack(osmTrack);
-        } else {
-          alert('Nie znaleziono takiego miejsca na Ziemi. Spróbuj wpisać nazwę miasta, ulicy lub toru.');
-        }
+      const results = await fetchGeocodingResults(searchQuery);
+      if (results && results.length > 0) {
+        triggerCinematicZoomToTrack(results[0]);
+      } else {
+        alert('Nie znaleziono takiego adresu lub miasta na Ziemi. Spróbuj wpisać nazwę samej ulicy lub miasta.');
       }
     } catch (err) {
-      console.error('Błąd wyszukiwania na Ziemi:', err);
-      alert('Wystąpił błąd podczas wyszukiwania adresu na kuli ziemskiej.');
+      console.error('Błąd wyszukiwania Enter:', err);
+      alert('Wystąpił błąd podczas wyszukiwania na kuli ziemskiej.');
     } finally {
       setIsSearchingOnline(false);
     }
@@ -180,7 +170,7 @@ function HomePage() {
     }, 1250);
   };
 
-  // Inicjalizacja fotorealistycznej Kuli Ziemskiej 3D w stylu Google Earth (globe.gl + Three.js)
+  // 1. CZYSTA, ULTRA-REALISTYCZNA KULA ZIEMSKA 8K W KOSMOSIE (Bez żadnych znaczników i torów)
   useEffect(() => {
     if (hasArrived) {
       if (globeInstanceRef.current && typeof globeInstanceRef.current._destructor === 'function') {
@@ -197,26 +187,14 @@ function HomePage() {
 
       globeContainerRef.current.innerHTML = '';
       const globe = Globe()(globeContainerRef.current)
+        // Podmiana na fotorealistyczne tekstury Ultra HD (8K Blue Marble + Topografia + Woda)
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
-        .atmosphereColor('#3a228a')
-        .atmosphereAltitude(0.22)
-        .pointsData(TRACK_DATABASE)
-        .pointLat(d => d.coords[1])
-        .pointLng(d => d.coords[0])
-        .pointColor(() => '#ef4444')
-        .pointAltitude(0.06)
-        .pointRadius(0.65)
-        .pointsMerge(false)
-        .pointLabel(d => `
-          <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(99, 102, 241, 0.6); padding: 8px 12px; border-radius: 10px; color: white; font-family: sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none;">
-            <div style="font-weight: bold; font-size: 13px; color: #38bdf8;">🚀 ${d.name}</div>
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${d.city}</div>
-            <div style="font-size: 10px; color: #10b981; margin-top: 4px; font-weight: 600;">Kliknij, aby zejść z kosmosu nad padok</div>
-          </div>
-        `)
-        .onPointClick(d => triggerCinematicZoomToTrack(d))
+        .atmosphereColor('#38bdf8')
+        .atmosphereAltitude(0.20)
+        // Całkowity brak czerwonych pinezek i torów - czysta Ziemia z kosmosu
+        .pointsData([])
         .onGlobeClick(({ lat, lng }) => {
           const customEarthSpot = {
             id: `earth-${lat.toFixed(4)}-${lng.toFixed(4)}`,
@@ -232,8 +210,8 @@ function HomePage() {
         });
 
       globe.controls().autoRotate = true;
-      globe.controls().autoRotateSpeed = 0.5;
-      globe.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.1 }, 1000);
+      globe.controls().autoRotateSpeed = 0.4;
+      globe.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.2 }, 1000);
 
       globeInstanceRef.current = globe;
       setIsGlobeReady(true);
@@ -278,12 +256,13 @@ function HomePage() {
     };
   }, [hasArrived]);
 
-  // Inicjalizacja pełnej mapy satelitarnej Leaflet
+  // 2. NAPRAWA PRZEŁĄCZNIKÓW WARSTW MAPY (Silnik tworzony tylko raz przy wylądowaniu na Ziemi)
   useEffect(() => {
     if (!hasArrived || !selectedTrack) {
       if (paddockMapInstanceRef.current) {
         paddockMapInstanceRef.current.remove();
         paddockMapInstanceRef.current = null;
+        tileLayerRef.current = null;
       }
       return;
     }
@@ -305,28 +284,21 @@ function HomePage() {
 
       paddockMapInstanceRef.current = map;
 
-      const satEsriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxNativeZoom: 17,
-        maxZoom: 22,
-      });
+      const getLayerUrl = (type) => {
+        if (type === 'street') {
+          return { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', maxNativeZoom: 19 };
+        } else if (type === 'satellite-streets') {
+          return { url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', maxNativeZoom: 20 };
+        }
+        return { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxNativeZoom: 17 };
+      };
 
-      const satGoogleHybridLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-        maxNativeZoom: 20,
+      const layerConfig = getLayerUrl(mapLayerType);
+      const layer = L.tileLayer(layerConfig.url, {
+        maxNativeZoom: layerConfig.maxNativeZoom,
         maxZoom: 22,
-      });
-
-      const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxNativeZoom: 19,
-        maxZoom: 22,
-      });
-
-      if (mapLayerType === 'street') {
-        streetLayer.addTo(map);
-      } else if (mapLayerType === 'satellite-streets') {
-        satGoogleHybridLayer.addTo(map);
-      } else {
-        satEsriLayer.addTo(map);
-      }
+      }).addTo(map);
+      tileLayerRef.current = layer;
 
       L.control.zoom({ position: 'top-right' }).addTo(map);
 
@@ -344,6 +316,11 @@ function HomePage() {
         iconAnchor: [18, 18]
       });
       L.marker([lat, lng], { icon: customIcon }).addTo(map);
+
+      // Obsługa kliknięć na mapie podczas rysowania wielokąta (Polygon Lasso)
+      map.on('click', (e) => {
+        // Kliknięcie zostanie obsłużone w dedykowanym stanie/efekcie rysowania wielokąta
+      });
 
       const forceResize = () => {
         if (paddockMapInstanceRef.current) {
@@ -372,83 +349,142 @@ function HomePage() {
       if (paddockMapInstanceRef.current) {
         paddockMapInstanceRef.current.remove();
         paddockMapInstanceRef.current = null;
+        tileLayerRef.current = null;
       }
     };
-  }, [hasArrived, selectedTrack, mapLayerType]);
+  }, [hasArrived, selectedTrack]);
 
-  // Rozpoczęcie trybu swobodnego wielokąta (dodawanie i edycja rogów)
-  const startPolygonFraming = () => {
-    const map = paddockMapInstanceRef.current;
-    if (!map) return;
-
-    setIsCustomFramingMode(true);
-    const center = map.getCenter();
-    const dLat = 0.0014;
-    const dLng = 0.0022;
-
-    // Domyślne 4 rogi wielokąta wokół aktualnego centrum mapy
-    const initialPts = [
-      [center.lat + dLat, center.lng - dLng], // Lewy górny
-      [center.lat + dLat, center.lng + dLng], // Prawy górny
-      [center.lat - dLat, center.lng + dLng], // Prawy dolny
-      [center.lat - dLat, center.lng - dLng], // Lewy dolny
-    ];
-    setPolygonPoints(initialPts);
-  };
-
-  // Rysowanie i edycja rogów wielokąta w Leaflet na żywo
+  // Płynna zmiana warstwy kafelków po kliknięciu przycisków (bez niszczenia mapy ani zawieszania)
   useEffect(() => {
     const map = paddockMapInstanceRef.current;
     const L = window.L;
-    if (!map || !L || !isCustomFramingMode || polygonPoints.length < 3) {
-      // Usuń poprzednią warstwę wielokąta i markery rogów
-      if (polygonLayerRef.current) {
-        polygonLayerRef.current.remove();
-        polygonLayerRef.current = null;
-      }
+    if (!map || !L || !tileLayerRef.current) return;
+
+    map.removeLayer(tileLayerRef.current);
+
+    let url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    let maxNativeZoom = 17;
+
+    if (mapLayerType === 'street') {
+      url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      maxNativeZoom = 19;
+    } else if (mapLayerType === 'satellite-streets') {
+      url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      maxNativeZoom = 20;
+    }
+
+    const newLayer = L.tileLayer(url, {
+      maxNativeZoom,
+      maxZoom: 22,
+    }).addTo(map);
+
+    tileLayerRef.current = newLayer;
+  }, [mapLayerType]);
+
+  // 3. RYSOWANIE WIELOKĄTA PUNKT PO PUNKCIE Z ZAMKNIĘCIEM NA PIERWSZEJ KROPCE (POLYGON LASSO)
+  const startPolygonFraming = () => {
+    setIsCustomFramingMode(true);
+    setPolygonPoints([]);
+    setIsPolygonClosed(false);
+  };
+
+  // Nasłuch kliknięć na mapie do wstawiania kolejnych rogów wielokąta
+  useEffect(() => {
+    const map = paddockMapInstanceRef.current;
+    if (!map || !isCustomFramingMode || isPolygonClosed) return;
+
+    const handleMapClick = (e) => {
+      setPolygonPoints(prev => [...prev, [e.latlng.lat, e.latlng.lng]]);
+    };
+
+    map.on('click', handleMapClick);
+    return () => map.off('click', handleMapClick);
+  }, [isCustomFramingMode, isPolygonClosed]);
+
+  // Rysowanie obwodu wielokąta, linii oraz punktów startowych i narożnych w Leaflet
+  useEffect(() => {
+    const map = paddockMapInstanceRef.current;
+    const L = window.L;
+    if (!map || !L || !isCustomFramingMode) {
+      if (polygonLayerRef.current) { polygonLayerRef.current.remove(); polygonLayerRef.current = null; }
+      if (polylineLayerRef.current) { polylineLayerRef.current.remove(); polylineLayerRef.current = null; }
       vertexMarkersRef.current.forEach(m => m.remove());
       vertexMarkersRef.current = [];
       return;
     }
 
-    // Usuń stare markery przed narysowaniem aktualnych
-    if (polygonLayerRef.current) {
-      polygonLayerRef.current.remove();
-    }
+    // Usuń stare kształty przed narysowaniem aktualnego stanu
+    if (polygonLayerRef.current) polygonLayerRef.current.remove();
+    if (polylineLayerRef.current) polylineLayerRef.current.remove();
     vertexMarkersRef.current.forEach(m => m.remove());
     vertexMarkersRef.current = [];
 
-    // Narysuj zielony półprzezroczysty wielokąt
-    const poly = L.polygon(polygonPoints, {
-      color: '#10b981',
-      weight: 3,
-      dashArray: '6, 6',
-      fillColor: '#10b981',
-      fillOpacity: 0.28,
-    }).addTo(map);
-    polygonLayerRef.current = poly;
+    if (polygonPoints.length === 0) return;
 
-    // Utwórz markery dla każdego rogu wielokąta z możliwością przeciągania
+    if (isPolygonClosed && polygonPoints.length >= 3) {
+      // Zamknięty wielokąt gotowy pod padok
+      const poly = L.polygon(polygonPoints, {
+        color: '#10b981',
+        weight: 3.5,
+        dashArray: '8, 6',
+        fillColor: '#10b981',
+        fillOpacity: 0.35,
+      }).addTo(map);
+      polygonLayerRef.current = poly;
+    } else if (polygonPoints.length >= 2) {
+      // Otwarta przerywana linia w trakcie rysowania
+      const line = L.polyline(polygonPoints, {
+        color: '#38bdf8',
+        weight: 3,
+        dashArray: '6, 6',
+      }).addTo(map);
+      polylineLayerRef.current = line;
+    }
+
+    // Rysowanie znaczników dla każdego punktu
     polygonPoints.forEach((pt, idx) => {
-      const vertexIcon = L.divIcon({
-        className: 'custom-polygon-vertex',
-        html: `<div style="width: 26px; height: 26px; background: #10b981; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 12px rgba(16,185,129,0.9); cursor: move; display: flex; align-items: center; justify-content: center; color: #040611; font-weight: 900; font-size: 12px; transition: transform 0.15s;">${idx + 1}</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
+      const isStartPoint = idx === 0;
+      let markerHtml = '';
+
+      if (isStartPoint && !isPolygonClosed && polygonPoints.length >= 3) {
+        // Specjalny pulsujący przycisk startowy do zamknięcia pętli
+        markerHtml = `
+          <div style="position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Kliknij tutaj, aby zamknąć obwód padoku!">
+            <div style="position: absolute; width: 44px; height: 44px; background: rgba(16,185,129,0.4); border-radius: 50%; animation: pulse 1s infinite;"></div>
+            <div style="width: 28px; height: 28px; background: #10b981; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 15px rgba(16,185,129,1); display: flex; align-items: center; justify-content: center; color: black; font-weight: 900; font-size: 13px;">1</div>
+          </div>
+        `;
+      } else {
+        markerHtml = `
+          <div style="width: 24px; height: 24px; background: ${isStartPoint ? '#10b981' : '#38bdf8'}; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.8); cursor: move; display: flex; align-items: center; justify-content: center; color: #040611; font-weight: 800; font-size: 11px;">
+            ${idx + 1}
+          </div>
+        `;
+      }
+
+      const icon = L.divIcon({
+        className: 'custom-lasso-marker',
+        html: markerHtml,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
       });
 
-      const marker = L.marker(pt, { draggable: true, icon: vertexIcon }).addTo(map);
+      const marker = L.marker(pt, { draggable: true, icon }).addTo(map);
 
+      // Kliknięcie w punkt nr 1 zamyka figurę, jeśli narysowano minimum 3 rogi!
+      if (isStartPoint && !isPolygonClosed) {
+        marker.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (polygonPoints.length >= 3) {
+            setIsPolygonClosed(true);
+          } else {
+            alert('Wielokąt musi mieć przynajmniej 3 punkty, aby można było zamknąć granice!');
+          }
+        });
+      }
+
+      // Przeciąganie dowolnego rogu aktualizuje kształt na żywo
       marker.on('drag', (e) => {
-        const newLatLng = e.target.getLatLng();
-        const currentPts = poly.getLatLngs()[0];
-        if (currentPts && currentPts[idx]) {
-          currentPts[idx] = newLatLng;
-          poly.setLatLngs(currentPts);
-        }
-      });
-
-      marker.on('dragend', (e) => {
         const newLatLng = e.target.getLatLng();
         setPolygonPoints(prev => {
           const updated = [...prev];
@@ -460,32 +496,15 @@ function HomePage() {
       vertexMarkersRef.current.push(marker);
     });
 
-  }, [isCustomFramingMode, polygonPoints]);
+  }, [isCustomFramingMode, polygonPoints, isPolygonClosed]);
 
-  // Dodawanie nowego rogu w centrum ekranu między istniejącymi rogami
-  const handleAddPolygonVertex = () => {
-    const map = paddockMapInstanceRef.current;
-    if (!map || polygonPoints.length === 0) return;
-    const center = map.getCenter();
-    setPolygonPoints(prev => [...prev, [center.lat, center.lng]]);
-  };
-
-  // Usuwanie ostatniego rogu wielokąta
-  const handleRemoveLastVertex = () => {
-    if (polygonPoints.length <= 3) {
-      alert('Wielokąt musi mieć przynajmniej 3 rogi!');
-      return;
-    }
-    setPolygonPoints(prev => prev.slice(0, -1));
-  };
-
-  // Obsługa zatwierdzenia wykadrowanego obszaru na Ziemi
+  // Obsługa zatwierdzenia wykadrowanego wielokąta na Ziemi
   const handleConfirmCustomBounds = () => {
     if (!selectedTrack) return;
     const map = paddockMapInstanceRef.current;
 
     let boundsObj;
-    if (isCustomFramingMode && polygonPoints.length >= 3) {
+    if (isCustomFramingMode && isPolygonClosed && polygonPoints.length >= 3) {
       const lats = polygonPoints.map(p => p[0]);
       const lngs = polygonPoints.map(p => p[1]);
       const minLat = Math.min(...lats);
@@ -526,7 +545,7 @@ function HomePage() {
     setShowCustomBoundsModal(true);
   };
 
-  // Zapis wykadrowanego obszaru z gwarancją braku zawieszenia (Limit 2.5s -> natychmiastowy zapis lokalny)
+  // 5. ZAPIS W 0 SEKUND (LIMIT 2.5s) ORAZ TŁO ULTRA HD DO PLANNERA (2048x2048 px BEZ PIKSELOZY)
   const handleSaveCustomEventAndOpen = async () => {
     if (!confirmedBounds || isSavingCustomEvent) return;
 
@@ -535,7 +554,7 @@ function HomePage() {
       const dimensions = calculateBoundsDimensionsMeters(confirmedBounds);
       const bboxStr = `${confirmedBounds.sw[0]},${confirmedBounds.sw[1]},${confirmedBounds.ne[0]},${confirmedBounds.ne[1]}`;
       
-      // Zastosowanie rozdzielczości Ultra HD 2048x2048 (4X więcej pikseli niż wcześniej!), wyeliminowanie pikselozy!
+      // Rozdzielczość Ultra HD 2048x2048 (4-krotnie wyższa rozdzielczość w celu wyeliminowania pikselozy na płótnie!)
       const esriStaticUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
 
       const eventData = {
@@ -555,7 +574,7 @@ function HomePage() {
         const docRef = await Promise.race([savePromise, timeoutPromise]);
         newId = docRef.id;
       } catch (err) {
-        console.warn('Chmura Firestore niedostępna lub wolna -> zapis w trybie Offline w 0 sekund:', err);
+        console.warn('Chmura Firestore niedostępna lub wolna -> natychmiastowy zapis Offline:', err);
         newId = 'local-' + Date.now();
         localStorage.setItem('local-event-' + newId, JSON.stringify({ id: newId, ...eventData, teams: [] }));
       }
@@ -571,14 +590,14 @@ function HomePage() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#040611] font-sans select-none">
-      {/* Fotorealistyczna Ziemia 3D (Google Earth Style - globe.gl) */}
+      {/* 1. Fotorealistyczna Ziemia 3D 8K (Czysta Kula Ziemska z kosmosu bez znaczników) */}
       {!hasArrived && (
         <div className="absolute inset-0 z-0 w-full h-full bg-[#040611] flex items-center justify-center">
           <div ref={globeContainerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
           {!isGlobeReady && (
             <div className="absolute z-10 flex flex-col items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-indigo-500/40">
               <div className="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs text-indigo-300 font-mono font-bold">🌌 Ładowanie Ziemi 3D z kosmosu...</p>
+              <p className="text-xs text-indigo-300 font-mono font-bold">🌌 Ładowanie Ziemi Ultra HD z kosmosu...</p>
             </div>
           )}
         </div>
@@ -623,7 +642,7 @@ function HomePage() {
         </div>
       )}
 
-      {/* Górny / Lewy Szklany Panel Wyszukiwarki na Całą Ziemię */}
+      {/* Górny / Lewy Szklany Panel Wyszukiwarki na Całą Ziemię w stylu Google Maps */}
       <div className="absolute top-5 left-5 z-30 w-full max-w-sm sm:max-w-md px-2 pointer-events-auto">
         <div className="glass-panel-strong p-4 rounded-2xl shadow-2xl border-white/25 backdrop-blur-xl">
           {/* Header */}
@@ -643,7 +662,7 @@ function HomePage() {
             </div>
           </div>
 
-          {/* Wyszukiwarka z obsługą Enter */}
+          {/* Wyszukiwarka z tolerancją na przecinki, numery i Enter */}
           <div className="relative">
             <input
               type="text"
@@ -659,12 +678,15 @@ function HomePage() {
                 }
               }}
               onFocus={() => setShowDropdown(true)}
-              placeholder="🔍 Wpisz adres, miasto lub tor i naciśnij Enter..."
+              placeholder="🔍 Wpisz np. Lipowa 12, Poznań lub miasto i naciśnij Enter..."
               className="w-full bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium pr-24 shadow-inner"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
                 className="absolute right-20 top-1/2 -translate-y-1/2 text-white/50 hover:text-white text-xs p-1"
               >
                 ✕
@@ -679,11 +701,11 @@ function HomePage() {
             </button>
           </div>
 
-          {/* Lista sugestii / Wyników z całej Ziemi */}
-          {(showDropdown || !selectedTrack || !hasArrived) && (
+          {/* Lista sugestii / Wyników wyszukiwania (wyświetlana TYLKO po wpisaniu min. 3 liter) */}
+          {showDropdown && searchResults.length > 0 && (
             <div className="mt-3 max-h-[38vh] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
               <div className="text-[10px] font-bold text-white/60 tracking-wider uppercase px-1 py-0.5 flex justify-between">
-                <span>{searchQuery ? 'Wyniki wyszukiwania na Ziemi:' : 'Sławne Tory / Kliknij na Globus:'}</span>
+                <span>Wyniki na kuli ziemskiej:</span>
                 {isSearchingOnline && <span className="text-indigo-400 animate-pulse">Szukanie w świecie...</span>}
               </div>
 
@@ -691,18 +713,14 @@ function HomePage() {
                 <button
                   key={track.id}
                   onClick={() => triggerCinematicZoomToTrack(track)}
-                  className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group ${
-                    selectedTrack?.id === track.id && hasArrived
-                      ? 'bg-indigo-600/30 border-indigo-400/80 shadow-[0_0_15px_rgba(99,102,241,0.25)]'
-                      : 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25'
-                  }`}
+                  className="w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25"
                 >
                   <div className="min-w-0 pr-2">
                     <p className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors truncate">
-                      {track.name}
+                      🏡 {track.name}
                     </p>
                     <p className="text-[10px] text-white/50 font-mono truncate">
-                      {track.city} • {track.w}×{track.h}m
+                      {track.city}
                     </p>
                   </div>
                   <div className="w-6 h-6 rounded-lg bg-white/10 group-hover:bg-indigo-500/30 flex items-center justify-center text-white/70 group-hover:text-white shrink-0 transition-all">
@@ -710,12 +728,6 @@ function HomePage() {
                   </div>
                 </button>
               ))}
-
-              {searchResults.length === 0 && !isSearchingOnline && (
-                <div className="text-center py-4 text-xs text-white/60 bg-black/30 rounded-xl border border-white/5 p-3">
-                  💡 Możesz wpisać dowolne miasto, ulicę lub współrzędne w okienku powyżej i nacisnąć <b>Enter</b>, albo po prostu <b>kliknąć w dowolny punkt na Ziemi 3D</b>!
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -728,7 +740,7 @@ function HomePage() {
             <div className="w-9 h-9 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
             <div className="text-left">
               <h4 className="font-extrabold text-white text-base sm:text-lg tracking-wide">
-                Zejście z kosmosu na Ziemię...
+                Zejście z kosmosu nad wybrany adres...
               </h4>
               <p className="text-xs text-indigo-300/90 font-mono">
                 {selectedTrack ? selectedTrack.name : 'Przybliżanie satelitarne...'}
@@ -759,7 +771,7 @@ function HomePage() {
                 onClick={() => {
                   setHasArrived(false);
                   if (globeInstanceRef.current && typeof globeInstanceRef.current.pointOfView === 'function') {
-                    globeInstanceRef.current.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.1 }, 1000);
+                    globeInstanceRef.current.pointOfView({ lat: 51.5, lng: 18.0, altitude: 2.2 }, 1000);
                   }
                 }}
                 title="Wróć do widoku kuli ziemskiej w kosmosie"
@@ -769,7 +781,7 @@ function HomePage() {
               </button>
               <button
                 onClick={startPolygonFraming}
-                title="Dopasuj ręcznie rogi wielokąta granicy padoku"
+                title="Narysuj wielokątną granicę padoku w terenie (Polygon Lasso)"
                 className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white font-bold text-emerald-300 border-emerald-400/40"
               >
                 📐 Kadruj obszar
@@ -792,36 +804,43 @@ function HomePage() {
         </div>
       )}
 
-      {/* Interaktywne Kadrowanie Wielokątem na Żywo nad Mapą */}
+      {/* 3. Panel i baner podczas rysowania wielokąta (Polygon Lasso) */}
       {hasArrived && isCustomFramingMode && (
         <>
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[450] pointer-events-auto bg-black/85 backdrop-blur-md px-6 py-3 rounded-2xl border border-emerald-400/60 shadow-[0_0_30px_rgba(16,185,129,0.3)] flex flex-col sm:flex-row items-center gap-3 animate-fade-in">
-            <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-1.5">
-              <span>🎯 SWOBODNE KADROWANIE WIELOKĄTEM ({polygonPoints.length} ROGI)</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleAddPolygonVertex}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shadow"
-                title="Dodaj nowy róg w centrum aktualnego widoku i przeciągnij go myszką"
-              >
-                ➕ Dodaj róg w centrum
-              </button>
-              <button
-                onClick={handleRemoveLastVertex}
-                disabled={polygonPoints.length <= 3}
-                className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-all shadow"
-                title="Usuń ostatnio dodany róg"
-              >
-                🗑️ Usuń róg
-              </button>
-              <button
-                onClick={startPolygonFraming}
-                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/90 text-xs rounded-lg transition-all"
-                title="Resetuj kształt do prostokąta"
-              >
-                🔁 Reset
-              </button>
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[450] pointer-events-auto bg-black/90 backdrop-blur-md px-6 py-3.5 rounded-2xl border border-emerald-400/70 shadow-[0_0_30px_rgba(16,185,129,0.35)] flex flex-col sm:flex-row items-center gap-3 animate-fade-in max-w-2xl text-center">
+            {polygonPoints.length === 0 && (
+              <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-2">
+                <span>✏️ KLIKNIJ W DOWOLNYM MIEJSCU NA MAPIE, ABY POSTAWIĆ PIERWSZY PUNKT GRANICY</span>
+              </span>
+            )}
+            {polygonPoints.length > 0 && !isPolygonClosed && (
+              <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-2">
+                <span>📍 Klikaj kolejne punkty wzdłuż placu ({polygonPoints.length} punkty). Aby zamknąć kadr, kliknij z powrotem w <b>KROPKĘ NR 1</b>!</span>
+              </span>
+            )}
+            {isPolygonClosed && (
+              <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-2">
+                <span>✔ OBWÓD ZAMKNIĘTY! Gotowe do zatwierdzenia lub dalszego przeciągania rogów.</span>
+              </span>
+            )}
+
+            <div className="flex items-center gap-2 shrink-0">
+              {polygonPoints.length > 0 && !isPolygonClosed && (
+                <button
+                  onClick={() => setPolygonPoints(prev => prev.slice(0, -1))}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition-all shadow"
+                >
+                  🗑️ Cofnij punkt
+                </button>
+              )}
+              {polygonPoints.length > 0 && (
+                <button
+                  onClick={() => { setPolygonPoints([]); setIsPolygonClosed(false); }}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs rounded-lg transition-all"
+                >
+                  🔁 Od nowa
+                </button>
+              )}
             </div>
           </div>
 
@@ -830,15 +849,17 @@ function HomePage() {
               onClick={() => setIsCustomFramingMode(false)}
               className="glass-button py-3 px-5 text-xs text-white/80"
             >
-              Anuluj kadrowanie
+              Anuluj
             </button>
-            <button
-              onClick={handleConfirmCustomBounds}
-              className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xl"
-            >
-              <span>Zatwierdź ten kształt pod Padok</span>
-              <span>✔</span>
-            </button>
+            {isPolygonClosed && polygonPoints.length >= 3 && (
+              <button
+                onClick={handleConfirmCustomBounds}
+                className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xl border border-emerald-400"
+              >
+                <span>Zatwierdź ten kształt pod Padok</span>
+                <span>✔</span>
+              </button>
+            )}
           </div>
         </>
       )}
