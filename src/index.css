@@ -30,36 +30,54 @@ body {
 /* ===== Glassmorphism Utilities (Dark Smoked Glass for High Contrast) ===== */
 @layer components {
   .glass-panel {
-    @apply bg-slate-950/85 backdrop-blur-xl border border-white/20 rounded-2xl;
-    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.7);
+    background: rgba(6, 10, 19, 0.95) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 1rem !important;
+    box-shadow: 0 16px 45px 0 rgba(0, 0, 0, 0.85) !important;
   }
 
   .glass-panel-strong {
-    @apply bg-slate-950/92 backdrop-blur-2xl border border-white/25 rounded-2xl;
-    box-shadow: 0 16px 50px 0 rgba(0, 0, 0, 0.85);
+    background: rgba(3, 6, 14, 0.97) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    border-radius: 1rem !important;
+    box-shadow: 0 20px 55px 0 rgba(0, 0, 0, 0.95) !important;
   }
 
   .glass-button {
-    @apply bg-slate-900/85 backdrop-blur-lg border border-white/20 rounded-xl
-           px-6 py-3 font-medium text-white
-           transition-all duration-300 ease-out
-           hover:bg-slate-800 hover:border-white/35 hover:shadow-glass-lg
-           active:scale-95;
+    background: rgba(15, 23, 42, 0.92) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    @apply border border-white/20 rounded-xl px-6 py-3 font-medium text-white transition-all duration-300 ease-out hover:border-white/35 hover:shadow-glass-lg active:scale-95;
+  }
+
+  .glass-button:hover {
+    background: rgba(30, 41, 59, 0.96) !important;
   }
 
   .glass-button-primary {
-    @apply bg-indigo-600/85 backdrop-blur-lg border border-indigo-400/40 rounded-xl
-           px-6 py-3 font-semibold text-white
-           transition-all duration-300 ease-out
-           hover:bg-indigo-600 hover:border-indigo-400/70 hover:shadow-glass-lg
-           active:scale-95;
+    background: rgba(79, 70, 229, 0.9) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    @apply border border-indigo-400/40 rounded-xl px-6 py-3 font-semibold text-white transition-all duration-300 ease-out hover:border-indigo-400/70 hover:shadow-glass-lg active:scale-95;
+  }
+
+  .glass-button-primary:hover {
+    background: rgba(79, 70, 229, 1) !important;
   }
 
   .glass-input {
-    @apply bg-slate-900/85 backdrop-blur-lg border border-white/20 rounded-xl
-           px-4 py-3 text-white placeholder-white/40
-           outline-none transition-all duration-300
-           focus:border-indigo-400/70 focus:bg-slate-900 focus:ring-2 focus:ring-indigo-400/30;
+    background: rgba(15, 23, 42, 0.92) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    @apply border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/40 outline-none transition-all duration-300 focus:border-indigo-400/70 focus:ring-2 focus:ring-indigo-400/30;
+  }
+
+  .glass-input:focus {
+    background: rgba(15, 23, 42, 1) !important;
   }
 }
 

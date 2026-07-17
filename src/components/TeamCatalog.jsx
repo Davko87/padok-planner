@@ -54,7 +54,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
       >
         <div className="glass-panel flex flex-col h-full overflow-hidden shadow-glass-lg border-white/25">
           {/* Header */}
-          <div className="p-4 border-b border-white/15 flex items-center justify-between bg-slate-900/70 backdrop-blur-md">
+          <div className="p-4 border-b border-white/15 flex items-center justify-between bg-[#0a0f1d]/90">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
@@ -115,7 +115,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                     <span className="text-xs">Ładowanie szablonów...</span>
                   </div>
                 ) : teams.length === 0 ? (
-                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-white/15 bg-slate-900/60">
+                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-white/15 bg-[#0a0f1d]/80">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white/20 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
                     </svg>
@@ -134,7 +134,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                       style={{
                         '--team-color': team.color || '#3b82f6',
                       }}
-                      className="group relative p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/15 hover:border-white/30 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
+                      className="group relative p-4 rounded-xl bg-[#0e1628]/95 border border-white/20 hover:border-white/35 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
                     >
                       {/* Color glow accent bar on the left */}
                       <div
@@ -147,7 +147,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                           {team.name}
                         </span>
                         <div className="flex items-center gap-2 text-xs text-white/60 font-mono">
-                          <span className="bg-slate-800/80 px-2 py-0.5 rounded-md border border-white/10">
+                          <span className="bg-[#060b17] px-2 py-0.5 rounded-md border border-white/10">
                             {team.width} × {team.length} m
                           </span>
                           <span className="text-[10px] text-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -192,7 +192,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
               </div>
 
               {/* Bottom bar with button */}
-              <div className="p-4 border-t border-white/15 bg-slate-950/80 backdrop-blur-md">
+              <div className="p-4 border-t border-white/15 bg-[#060b17]/95">
                 <button
                   onClick={() => {
                     setEditingTeam(null);
