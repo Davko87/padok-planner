@@ -230,6 +230,14 @@ function PaddockCanvas({
         }
       }
 
+      const isDuplicate = placedTeams.some(
+        (t) => t.templateId === newTeamNode.templateId || (t.name && newTeamNode.name && t.name.trim().toLowerCase() === newTeamNode.name.trim().toLowerCase())
+      );
+      if (isDuplicate && onRequestDuplicateConfirm) {
+        onRequestDuplicateConfirm(newTeamNode);
+        return;
+      }
+
       const newTeamsList = [...placedTeams, newTeamNode];
       onUpdateTeams && onUpdateTeams(newTeamsList);
       onSelectTeam && onSelectTeam(newTeamNode.id);

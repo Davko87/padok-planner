@@ -5,6 +5,7 @@ import { db } from '../lib/firebase.js';
 import { findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
+import DuplicateTeamModal from '../components/DuplicateTeamModal.jsx';
 
 function PlannerPage() {
   const { eventId } = useParams();
@@ -20,6 +21,9 @@ function PlannerPage() {
   const [enableMagnet, setEnableMagnet] = useState(true);
   const [scalePx, setScalePx] = useState(0);
   const getViewportCenterRef = useRef(null);
+
+  // Stan weryfikacji powielenia (duplikatu) zespołu na padoku przed dodaniem
+  const [pendingDuplicateNode, setPendingDuplicateNode] = useState(null);
 
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
@@ -257,6 +261,14 @@ function PlannerPage() {
       rotation: 0,
     };
 
+    const isDuplicate = placedTeams.some(
+      (t) => t.templateId === newTeamNode.templateId || (t.name && newTeamNode.name && t.name.trim().toLowerCase() === newTeamNode.name.trim().toLowerCase())
+    );
+    if (isDuplicate) {
+      setPendingDuplicateNode({ template: teamTemplate, isFromCatalog: true, ppm });
+      return;
+    }
+
     if (!allowCollisions) {
       newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, ppm);
     }
@@ -270,6 +282,58 @@ function PlannerPage() {
     const updated = [...placedTeams, newTeamNode];
     setPlacedTeams(updated);
     setSelectedTeamId(newTeamNode.id);
+  };
+
+  const handleConfirmDuplicate = () => {
+    if (!pendingDuplicateNode) return;
+    if (pendingDuplicateNode.isFromCatalog) {
+      const { template, ppm } = pendingDuplicateNode;
+      const widthMeters = template.width || template.widthMeters || 10;
+      const heightMeters = template.length || template.heightMeters || 15;
+      const physicalWidth = eventData?.widthMeters || 250;
+      const physicalHeight = eventData?.heightMeters || 180;
+      const currentPpm = ppm || 1024 / physicalWidth;
+
+      let targetX = (physicalWidth * currentPpm) / 2;
+      let targetY = (physicalHeight * currentPpm) / 2;
+
+      if (getViewportCenterRef.current) {
+        const center = getViewportCenterRef.current();
+        if (center && typeof center.x === 'number' && !isNaN(center.x)) {
+          targetX = center.x;
+          targetY = center.y;
+        }
+      }
+
+      let newTeamNode = {
+        id: 'team_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        templateId: template.id || 'custom',
+        name: template.name || 'Zespól Wyścigowy',
+        color: template.color || '#3b82f6',
+        widthMeters,
+        heightMeters,
+        x: targetX - (widthMeters * currentPpm) / 2,
+        y: targetY - (heightMeters * currentPpm) / 2,
+        rotation: 0,
+      };
+
+      if (!allowCollisions) {
+        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, currentPpm);
+      }
+      if (enableMagnet) {
+        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, currentPpm, 4.0);
+        if (snapped) {
+          newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
+        }
+      }
+
+      setPlacedTeams((prev) => [...prev, newTeamNode]);
+      setSelectedTeamId(newTeamNode.id);
+    } else if (pendingDuplicateNode.node) {
+      setPlacedTeams((prev) => [...prev, pendingDuplicateNode.node]);
+      setSelectedTeamId(pendingDuplicateNode.node.id);
+    }
+    setPendingDuplicateNode(null);
   };
 
   const handleUpdateTemplate = (updatedTemplate) => {
@@ -304,6 +368,7 @@ function PlannerPage() {
         onToggleMagnet={() => setEnableMagnet((v) => !v)}
         getViewportCenterRef={getViewportCenterRef}
         onScaleReport={setScalePx}
+        onRequestDuplicateConfirm={(node) => setPendingDuplicateNode({ node, isFromCatalog: false })}
       />
 
       {/* ZADANIE: Górny panel szklany przeniesiony na lewą stronę w pionie (Pionowy Panel HUD po lewej) */}
@@ -443,6 +508,14 @@ function PlannerPage() {
 
       {/* Side panel — Team Catalog */}
       <TeamCatalog onSelectTeam={handleSelectTeamFromCatalog} onUpdateTemplate={handleUpdateTemplate} />
+
+      {/* Modal powiadomienia o ponownym dodaniu istniejącego już zespołu */}
+      <DuplicateTeamModal
+        isOpen={!!pendingDuplicateNode}
+        onClose={() => setPendingDuplicateNode(null)}
+        onConfirm={handleConfirmDuplicate}
+        teamName={pendingDuplicateNode?.template?.name || pendingDuplicateNode?.node?.name || 'Zespól Wyścigowy'}
+      />
     </div>
   );
 }
