@@ -3,9 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters } from '../lib/geoUtils.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { LoginModal, RegisterModal } from '../components/AuthModals.jsx';
 
 function HomePage() {
   const navigate = useNavigate();
+  const { currentUser, logout } = useAuth();
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   
   // Kontenery dla Globusu 3D (globe.gl) oraz Mapy Satelitarnej (Leaflet)
   const globeContainerRef = useRef(null);
@@ -590,6 +595,42 @@ function HomePage() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#040611] font-sans select-none">
+      {/* Panel Logowania / Rejestracji w prawym górnym rogu */}
+      <div className="absolute top-5 right-5 z-40 flex items-center gap-2 pointer-events-auto">
+        {currentUser ? (
+          <div className="glass-panel-strong px-3.5 py-1.5 rounded-xl border-white/20 flex items-center gap-3 shadow-glass">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-white tracking-wide">
+                {currentUser.nick}
+              </span>
+            </div>
+            <button
+              onClick={logout}
+              className="text-[11px] text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-all active:scale-95"
+              title="Wyloguj się"
+            >
+              Wyloguj
+            </button>
+          </div>
+        ) : (
+          <div className="glass-panel-strong p-1.5 rounded-xl border-white/20 flex items-center gap-1.5 shadow-glass">
+            <button
+              onClick={() => setIsLoginModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white/80 hover:text-white hover:bg-white/10 transition-all active:scale-95"
+            >
+              Zaloguj
+            </button>
+            <button
+              onClick={() => setIsRegisterModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white transition-all shadow-md"
+            >
+              Zarejestruj
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 1. Fotorealistyczna Ziemia 3D 8K (Czysta Kula Ziemska z kosmosu bez znaczników) */}
       {!hasArrived && (
         <div className="absolute inset-0 z-0 w-full h-full bg-[#040611] flex items-center justify-center">
@@ -610,7 +651,7 @@ function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60 pointer-events-none z-20" />
 
           {/* Przełącznik warstwy mapy: Satelita+Ulice / Satelita Esri / Mapa drogowa */}
-          <div className="absolute top-5 right-16 z-30 flex bg-black/75 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg gap-1">
+          <div className="absolute top-20 right-5 z-30 flex bg-black/75 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg gap-1">
             <button
               onClick={() => setMapLayerType('satellite-streets')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -951,6 +992,18 @@ function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Modale logowania i rejestracji */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSwitchToRegister={() => setIsRegisterModalOpen(true)}
+      />
+      <RegisterModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+        onSwitchToLogin={() => setIsLoginModalOpen(true)}
+      />
     </div>
   );
 }

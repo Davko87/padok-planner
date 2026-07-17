@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -16,6 +17,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 // CRITICAL: Firestore with persistent offline cache
 // This ensures the app works on racetracks without internet!
@@ -29,5 +31,5 @@ const db = initializeFirestore(app, {
 // Map images are loaded directly from Google Static Maps URL
 // and cached by the PWA service worker for offline use.
 
-export { app, db };
+export { app, db, auth };
 
