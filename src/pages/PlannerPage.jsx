@@ -23,6 +23,20 @@ function PlannerPage() {
   useEffect(() => {
     if (!eventId) return;
 
+    if (eventId.startsWith('local-')) {
+      const localJson = localStorage.getItem('local-event-' + eventId);
+      if (localJson) {
+        try {
+          const parsed = JSON.parse(localJson);
+          setEventData(parsed);
+          setPlacedTeams(parsed.teams || []);
+          hasLoadedInitialTeams.current = true;
+          setIsLoadingEvent(false);
+          return;
+        } catch (e) {}
+      }
+    }
+
     // Słownik wszystkich dostępnych torów i presetów bez klucza (Esri/ArcGIS)
     const PRESET_TRACKS = {
       'demo': { name: 'Tor Poznań — Padok Demo', w: 250, h: 180, bbox: '16.7942,52.4170,16.7982,52.4200' },
@@ -47,7 +61,7 @@ function PlannerPage() {
 
     // Jeśli to tor z naszej bazy lub preset — od razu ładujemy go synchronicznie! (Brak blokady na ładowaniu!)
     if (trackPreset) {
-      const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${trackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+      const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${trackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
       setEventData({
         id: eventId,
         name: trackPreset.name,
@@ -67,7 +81,7 @@ function PlannerPage() {
         if (prev && !eventData) {
           // Jeśli po 1.5s nadal nic nie pobrano z Firestore, ustaw domyślny tor z mapą satelitarną
           const fallbackPreset = PRESET_TRACKS['tor-poznan'];
-          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
           setEventData({
             id: eventId,
             name: `Padok Toru (${eventId})`,
@@ -92,8 +106,8 @@ function PlannerPage() {
           setEventData((prev) => ({
             ...prev,
             ...data,
-            // Jeśli obiekt w chmurze nie ma zdjęcia, użyj zdjęcia z presetu Esri
-            imageUrl: data.imageUrl || prev?.imageUrl || `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=16.7942,52.4170,16.7982,52.4200&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`,
+            // Jeśli obiekt w chmurze nie ma zdjęcia, użyj zdjęcia z presetu Esri w jakości 2048px (HD)
+            imageUrl: data.imageUrl || prev?.imageUrl || `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=16.7942,52.4170,16.7982,52.4200&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`,
           }));
           if (!hasLoadedInitialTeams.current) {
             setPlacedTeams(data.teams || []);
@@ -103,7 +117,7 @@ function PlannerPage() {
         } else if (!trackPreset) {
           // Jeśli nie było w presetach ani w Firestore, ustaw domyślne parametry zamiast błędu
           const fallbackPreset = PRESET_TRACKS['tor-poznan'];
-          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
           setEventData({
             id: eventId,
             name: `Nowy Padok: ${eventId}`,
@@ -134,6 +148,18 @@ function PlannerPage() {
       setSaveStatus('saved');
       return;
     }
+    if (eventId.startsWith('local-')) {
+      try {
+        setSaveStatus('saving');
+        const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
+        const updated = { ...current, teams: placedTeams, updatedAt: Date.now() };
+        localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
+        setSaveStatus('saved');
+      } catch (e) {
+        setSaveStatus('error');
+      }
+      return;
+    }
     try {
       setSaveStatus('saving');
       const docRef = doc(db, 'events', eventId);
@@ -154,6 +180,21 @@ function PlannerPage() {
     if (!eventId || eventId === 'demo') {
       setSaveStatus('saved');
       return;
+    }
+    if (eventId.startsWith('local-')) {
+      setSaveStatus('pending');
+      const timer = setTimeout(() => {
+        try {
+          setSaveStatus('saving');
+          const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
+          const updated = { ...current, teams: placedTeams, updatedAt: Date.now() };
+          localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
+          setSaveStatus('saved');
+        } catch (e) {
+          setSaveStatus('error');
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
 
     setSaveStatus('pending');

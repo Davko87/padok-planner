@@ -26,7 +26,10 @@ function HomePage() {
   const globeInstanceRef = useRef(null);
   const paddockMapContainerRef = useRef(null);
   const paddockMapInstanceRef = useRef(null);
-  const viewfinderRef = useRef(null);
+
+  // Warstwy i markery wielokąta w trybie kadrowania
+  const polygonLayerRef = useRef(null);
+  const vertexMarkersRef = useRef([]);
 
   // Wyszukiwarka na całej kuli ziemskiej
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,6 +43,10 @@ function HomePage() {
   const [hasArrived, setHasArrived] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [isCustomFramingMode, setIsCustomFramingMode] = useState(false);
+  
+  // Rogi wielokąta do kadrowania w formacie [[lat, lng], [lat, lng], ...]
+  const [polygonPoints, setPolygonPoints] = useState([]);
+
   const [showCustomBoundsModal, setShowCustomBoundsModal] = useState(false);
   const [confirmedBounds, setConfirmedBounds] = useState(null);
   const [customEventName, setCustomEventName] = useState('');
@@ -113,7 +120,6 @@ function HomePage() {
       return;
     }
 
-    // Jeśli to nie tor z bazy, odpytaj natychmiast całą Ziemię przez API Nominatim
     setIsSearchingOnline(true);
     try {
       const resp = await fetch(
@@ -156,7 +162,6 @@ function HomePage() {
     setIsCustomFramingMode(false);
     setShowCustomBoundsModal(false);
 
-    // Domyślnie dla adresów (np. ulic, domów) wybieramy widok satelitarny z nazwami ulic (hybrydowy)
     if (track.isCustomAddress) {
       setMapLayerType('satellite-streets');
     } else {
@@ -165,7 +170,6 @@ function HomePage() {
 
     const [lng, lat] = track.coords;
 
-    // Jeśli globus w 3D jest aktywny, płynnie obróć go i przybliż do punktu docelowego w stylu Google Earth
     if (globeInstanceRef.current && typeof globeInstanceRef.current.pointOfView === 'function') {
       globeInstanceRef.current.pointOfView({ lat, lng, altitude: 0.12 }, 1200);
     }
@@ -274,7 +278,7 @@ function HomePage() {
     };
   }, [hasArrived]);
 
-  // Inicjalizacja pełnej, uniwersalnej mapy satelitarnej Leaflet po zejściu na Ziemię (z gwarantowanym przeliczeniem wymiarów)
+  // Inicjalizacja pełnej mapy satelitarnej Leaflet
   useEffect(() => {
     if (!hasArrived || !selectedTrack) {
       if (paddockMapInstanceRef.current) {
@@ -301,19 +305,16 @@ function HomePage() {
 
       paddockMapInstanceRef.current = map;
 
-      // Kafelki satelitarne Esri HD z maxNativeZoom: 17
       const satEsriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 17,
         maxZoom: 22,
       });
 
-      // Kafelki hybrydowe Google (Satelita + Nazwy ulic i numerów domów - idealne dla dokładnych adresów!)
       const satGoogleHybridLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxNativeZoom: 20,
         maxZoom: 22,
       });
 
-      // Kafelki drogowe OpenStreetMap
       const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: 19,
         maxZoom: 22,
@@ -327,10 +328,9 @@ function HomePage() {
         satEsriLayer.addTo(map);
       }
 
-      // Kontrolki zoomu po prawej stronie
       L.control.zoom({ position: 'top-right' }).addTo(map);
 
-      // Znacznik w centrum lądowania
+      // Główny znacznik w centrum lądowania
       const markerHtml = `
         <div style="position: relative; display: flex; align-items: center; justify-content: center;">
           <div style="width: 36px; height: 36px; background: rgba(239, 68, 68, 0.35); border-radius: 50%; border: 2px solid #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.8);"></div>
@@ -345,7 +345,6 @@ function HomePage() {
       });
       L.marker([lat, lng], { icon: customIcon }).addTo(map);
 
-      // Wielokrotne wywołanie invalidateSize gwarantuje, że kontener mapy dokładnie wypełni ekran bez pustego, ciemnego tła
       const forceResize = () => {
         if (paddockMapInstanceRef.current) {
           paddockMapInstanceRef.current.invalidateSize(true);
@@ -377,13 +376,131 @@ function HomePage() {
     };
   }, [hasArrived, selectedTrack, mapLayerType]);
 
+  // Rozpoczęcie trybu swobodnego wielokąta (dodawanie i edycja rogów)
+  const startPolygonFraming = () => {
+    const map = paddockMapInstanceRef.current;
+    if (!map) return;
+
+    setIsCustomFramingMode(true);
+    const center = map.getCenter();
+    const dLat = 0.0014;
+    const dLng = 0.0022;
+
+    // Domyślne 4 rogi wielokąta wokół aktualnego centrum mapy
+    const initialPts = [
+      [center.lat + dLat, center.lng - dLng], // Lewy górny
+      [center.lat + dLat, center.lng + dLng], // Prawy górny
+      [center.lat - dLat, center.lng + dLng], // Prawy dolny
+      [center.lat - dLat, center.lng - dLng], // Lewy dolny
+    ];
+    setPolygonPoints(initialPts);
+  };
+
+  // Rysowanie i edycja rogów wielokąta w Leaflet na żywo
+  useEffect(() => {
+    const map = paddockMapInstanceRef.current;
+    const L = window.L;
+    if (!map || !L || !isCustomFramingMode || polygonPoints.length < 3) {
+      // Usuń poprzednią warstwę wielokąta i markery rogów
+      if (polygonLayerRef.current) {
+        polygonLayerRef.current.remove();
+        polygonLayerRef.current = null;
+      }
+      vertexMarkersRef.current.forEach(m => m.remove());
+      vertexMarkersRef.current = [];
+      return;
+    }
+
+    // Usuń stare markery przed narysowaniem aktualnych
+    if (polygonLayerRef.current) {
+      polygonLayerRef.current.remove();
+    }
+    vertexMarkersRef.current.forEach(m => m.remove());
+    vertexMarkersRef.current = [];
+
+    // Narysuj zielony półprzezroczysty wielokąt
+    const poly = L.polygon(polygonPoints, {
+      color: '#10b981',
+      weight: 3,
+      dashArray: '6, 6',
+      fillColor: '#10b981',
+      fillOpacity: 0.28,
+    }).addTo(map);
+    polygonLayerRef.current = poly;
+
+    // Utwórz markery dla każdego rogu wielokąta z możliwością przeciągania
+    polygonPoints.forEach((pt, idx) => {
+      const vertexIcon = L.divIcon({
+        className: 'custom-polygon-vertex',
+        html: `<div style="width: 26px; height: 26px; background: #10b981; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 12px rgba(16,185,129,0.9); cursor: move; display: flex; align-items: center; justify-content: center; color: #040611; font-weight: 900; font-size: 12px; transition: transform 0.15s;">${idx + 1}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+
+      const marker = L.marker(pt, { draggable: true, icon: vertexIcon }).addTo(map);
+
+      marker.on('drag', (e) => {
+        const newLatLng = e.target.getLatLng();
+        const currentPts = poly.getLatLngs()[0];
+        if (currentPts && currentPts[idx]) {
+          currentPts[idx] = newLatLng;
+          poly.setLatLngs(currentPts);
+        }
+      });
+
+      marker.on('dragend', (e) => {
+        const newLatLng = e.target.getLatLng();
+        setPolygonPoints(prev => {
+          const updated = [...prev];
+          updated[idx] = [newLatLng.lat, newLatLng.lng];
+          return updated;
+        });
+      });
+
+      vertexMarkersRef.current.push(marker);
+    });
+
+  }, [isCustomFramingMode, polygonPoints]);
+
+  // Dodawanie nowego rogu w centrum ekranu między istniejącymi rogami
+  const handleAddPolygonVertex = () => {
+    const map = paddockMapInstanceRef.current;
+    if (!map || polygonPoints.length === 0) return;
+    const center = map.getCenter();
+    setPolygonPoints(prev => [...prev, [center.lat, center.lng]]);
+  };
+
+  // Usuwanie ostatniego rogu wielokąta
+  const handleRemoveLastVertex = () => {
+    if (polygonPoints.length <= 3) {
+      alert('Wielokąt musi mieć przynajmniej 3 rogi!');
+      return;
+    }
+    setPolygonPoints(prev => prev.slice(0, -1));
+  };
+
   // Obsługa zatwierdzenia wykadrowanego obszaru na Ziemi
   const handleConfirmCustomBounds = () => {
     if (!selectedTrack) return;
     const map = paddockMapInstanceRef.current;
 
     let boundsObj;
-    if (map) {
+    if (isCustomFramingMode && polygonPoints.length >= 3) {
+      const lats = polygonPoints.map(p => p[0]);
+      const lngs = polygonPoints.map(p => p[1]);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+
+      boundsObj = {
+        sw: [minLng, minLat],
+        ne: [maxLng, maxLat],
+        center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
+        zoom: map ? map.getZoom() : 18,
+        polygonVertices: polygonPoints,
+      };
+    } else if (map) {
       const bounds = map.getBounds();
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
@@ -409,7 +526,7 @@ function HomePage() {
     setShowCustomBoundsModal(true);
   };
 
-  // Zapis wykadrowanego obszaru z dowolnego miejsca na Ziemi do Firestore i przejście do Plannera
+  // Zapis wykadrowanego obszaru z gwarancją braku zawieszenia (Limit 2.5s -> natychmiastowy zapis lokalny)
   const handleSaveCustomEventAndOpen = async () => {
     if (!confirmedBounds || isSavingCustomEvent) return;
 
@@ -417,7 +534,9 @@ function HomePage() {
       setIsSavingCustomEvent(true);
       const dimensions = calculateBoundsDimensionsMeters(confirmedBounds);
       const bboxStr = `${confirmedBounds.sw[0]},${confirmedBounds.sw[1]},${confirmedBounds.ne[0]},${confirmedBounds.ne[1]}`;
-      const esriStaticUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+      
+      // Zastosowanie rozdzielczości Ultra HD 2048x2048 (4X więcej pikseli niż wcześniej!), wyeliminowanie pikselozy!
+      const esriStaticUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
 
       const eventData = {
         name: customEventName.trim() || 'Własny Padok na Ziemi',
@@ -425,13 +544,25 @@ function HomePage() {
         widthMeters: dimensions.widthMeters || 250,
         heightMeters: dimensions.heightMeters || 180,
         bounds: confirmedBounds,
-        createdAt: serverTimestamp(),
+        polygonVertices: confirmedBounds.polygonVertices || null,
+        createdAt: Date.now(),
       };
 
-      const docRef = await addDoc(collection(db, 'events'), eventData);
-      navigate(`/planner/${docRef.id}`);
+      let newId;
+      try {
+        const savePromise = addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp() });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2500));
+        const docRef = await Promise.race([savePromise, timeoutPromise]);
+        newId = docRef.id;
+      } catch (err) {
+        console.warn('Chmura Firestore niedostępna lub wolna -> zapis w trybie Offline w 0 sekund:', err);
+        newId = 'local-' + Date.now();
+        localStorage.setItem('local-event-' + newId, JSON.stringify({ id: newId, ...eventData, teams: [] }));
+      }
+
+      navigate(`/planner/${newId}`);
     } catch (error) {
-      console.error('Błąd zapisu w Firestore:', error);
+      console.error('Błąd zapisu padoku:', error);
       alert('Nie udało się zapisać nowego układu.');
     } finally {
       setIsSavingCustomEvent(false);
@@ -607,7 +738,7 @@ function HomePage() {
         </div>
       )}
 
-      {/* Dolny Panel Akcji po wylądowaniu w dowolnym punkcie Ziemi */}
+      {/* Dolny Panel Akcji po wylądowaniu na Ziemi */}
       {hasArrived && selectedTrack && !showCustomBoundsModal && !isCustomFramingMode && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 pointer-events-auto animate-slide-up">
           <div className="glass-panel-strong p-5 rounded-2xl border-indigo-400/50 shadow-[0_0_40px_rgba(79,46,229,0.35)] flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -637,8 +768,8 @@ function HomePage() {
                 🌍 Globus
               </button>
               <button
-                onClick={() => setIsCustomFramingMode(true)}
-                title="Dopasuj ręcznie celownik obszaru na interaktywnej mapie"
+                onClick={startPolygonFraming}
+                title="Dopasuj ręcznie rogi wielokąta granicy padoku"
                 className="glass-button px-3.5 py-2.5 text-xs text-white/80 hover:text-white font-bold text-emerald-300 border-emerald-400/40"
               >
                 📐 Kadruj obszar
@@ -661,31 +792,36 @@ function HomePage() {
         </div>
       )}
 
-      {/* Celownik HUD - kadrowanie DOWOLNEGO obszaru na Ziemi */}
+      {/* Interaktywne Kadrowanie Wielokątem na Żywo nad Mapą */}
       {hasArrived && isCustomFramingMode && (
         <>
-          <div className="absolute inset-0 z-[450] pointer-events-none flex items-center justify-center p-4">
-            <div
-              ref={viewfinderRef}
-              className="w-[85vw] max-w-[480px] h-[60vh] max-h-[520px] border-2 border-emerald-400/80 rounded-3xl bg-emerald-500/10 backdrop-blur-[1px] shadow-[0_0_60px_rgba(16,185,129,0.25)] flex flex-col justify-between p-5 relative animate-fade-in"
-            >
-              <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-300 rounded-tl-2xl -translate-x-1 -translate-y-1" />
-              <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-300 rounded-tr-2xl translate-x-1 -translate-y-1" />
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-300 rounded-bl-2xl -translate-x-1 translate-y-1" />
-              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-300 rounded-br-2xl translate-x-1 translate-y-1" />
-
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center opacity-60">
-                <div className="w-full h-[1px] bg-emerald-400 absolute" />
-                <div className="h-full w-[1px] bg-emerald-400 absolute" />
-              </div>
-
-              <div className="self-center bg-black/75 px-3.5 py-1 rounded-full border border-emerald-400/50 text-[11px] font-mono text-emerald-300 shadow">
-                🎯 KADROWANIE DOWOLNEGO MIEJSCA NA ZIEMI
-              </div>
-
-              <div className="text-center bg-black/75 px-3.5 py-2 rounded-xl border border-white/15 text-xs text-white/90 shadow">
-                Przesuń mapę i dopasuj zoom tak, by Twój przyszły padok znalazł się dokładnie w centrum celownika
-              </div>
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[450] pointer-events-auto bg-black/85 backdrop-blur-md px-6 py-3 rounded-2xl border border-emerald-400/60 shadow-[0_0_30px_rgba(16,185,129,0.3)] flex flex-col sm:flex-row items-center gap-3 animate-fade-in">
+            <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-1.5">
+              <span>🎯 SWOBODNE KADROWANIE WIELOKĄTEM ({polygonPoints.length} ROGI)</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAddPolygonVertex}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shadow"
+                title="Dodaj nowy róg w centrum aktualnego widoku i przeciągnij go myszką"
+              >
+                ➕ Dodaj róg w centrum
+              </button>
+              <button
+                onClick={handleRemoveLastVertex}
+                disabled={polygonPoints.length <= 3}
+                className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-all shadow"
+                title="Usuń ostatnio dodany róg"
+              >
+                🗑️ Usuń róg
+              </button>
+              <button
+                onClick={startPolygonFraming}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/90 text-xs rounded-lg transition-all"
+                title="Resetuj kształt do prostokąta"
+              >
+                🔁 Reset
+              </button>
             </div>
           </div>
 
@@ -700,14 +836,14 @@ function HomePage() {
               onClick={handleConfirmCustomBounds}
               className="glass-button-primary px-7 py-3 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xl"
             >
-              <span>Zatwierdź ten obszar pod Padok</span>
+              <span>Zatwierdź ten kształt pod Padok</span>
               <span>✔</span>
             </button>
           </div>
         </>
       )}
 
-      {/* Modal Potwierdzenia i Zapisywania Niestandardowego Kadru (Haversine) */}
+      {/* Modal Potwierdzenia i Zapisywania Niestandardowego Kadru (Haversine + Ultra HD) */}
       {showCustomBoundsModal && confirmedBounds && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in pointer-events-auto">
           <div className="glass-panel-strong w-full max-w-md p-6 sm:p-8 rounded-3xl border-white/30 shadow-2xl relative animate-slide-up">
@@ -719,13 +855,12 @@ function HomePage() {
             </button>
 
             <h3 className="text-lg font-bold text-white mb-2">
-              🏎️ Potwierdź Strefę Padoku
+              🏎️ Potwierdź Strefę Padoku (Ultra HD)
             </h3>
             <p className="text-xs text-white/60 mb-5">
-              Wymiary fizyczne wyciętego obszaru obliczone automatycznie wzorem Haversine'a.
+              Wymiary fizyczne wyciętego obszaru obliczone automatycznie wzorem Haversine'a na podstawie narysowanego kształtu.
             </p>
 
-            {/* Podsumowanie wymiarów */}
             <div className="bg-black/50 rounded-xl p-3.5 border border-emerald-400/30 font-mono text-xs text-white/90 mb-5 space-y-1.5">
               <div className="flex justify-between font-bold text-emerald-300 pb-1 border-b border-white/10">
                 <span>Wymiary Obszaru:</span>
@@ -739,9 +874,13 @@ function HomePage() {
                 <span>Długość:</span>
                 <span>{calculateBoundsDimensionsMeters(confirmedBounds).heightMeters} m</span>
               </div>
+              <div className="flex justify-between text-white/60">
+                <span>Liczba rogów:</span>
+                <span className="text-emerald-300">{confirmedBounds.polygonVertices ? confirmedBounds.polygonVertices.length : 4} punktów</span>
+              </div>
               <div className="flex justify-between pt-1 border-t border-white/10 text-[10px] text-white/50">
-                <span>Źródło mapy:</span>
-                <span className="text-emerald-400">{mapLayerType === 'street' ? 'OpenStreetMap Street' : 'Esri / Google Satellite HD'}</span>
+                <span>Jakość eksportu:</span>
+                <span className="text-emerald-400 font-bold">Ultra HD (2048×2048 px)</span>
               </div>
             </div>
 
@@ -771,7 +910,7 @@ function HomePage() {
                 disabled={isSavingCustomEvent}
                 className="glass-button-primary flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2"
               >
-                {isSavingCustomEvent ? 'Tworzenie...' : 'Otwórz Planner 🚀'}
+                {isSavingCustomEvent ? 'Zapisywanie...' : 'Otwórz Planner 🚀'}
               </button>
             </div>
           </div>
