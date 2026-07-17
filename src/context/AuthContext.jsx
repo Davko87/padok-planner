@@ -143,7 +143,7 @@ export function AuthProvider({ children }) {
     const userDocRef = doc(db, 'users', cleanId);
     try {
       const getPromise = getDoc(userDocRef);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
       const docSnap = await Promise.race([getPromise, timeoutPromise]);
       if (docSnap && docSnap.exists()) {
         const data = docSnap.data();
@@ -168,7 +168,7 @@ export function AuthProvider({ children }) {
     // 2. Próba logowania w Firebase Auth jeśli istnieje konto cloud
     try {
       const authPromise = signInWithEmailAndPassword(auth, pseudoEmail, password);
-      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 1500));
+      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 8000));
       const userCredential = await Promise.race([authPromise, timeoutAuth]);
       const loggedNick = userCredential.user.displayName || cleanNick;
       const userObj = {
@@ -180,7 +180,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       return { success: true, user: userObj };
     } catch (err) {
-      throw new Error('Nieprawidłowy nick lub hasło!');
+      throw new Error('Nieprawidłowy nick lub hasło! (bądź serwer wolniej odpowiada, spróbuj ponownie)');
     }
   };
 
