@@ -13,6 +13,7 @@ function PaddockCanvas({
   allowCollisions = false,
   onToggleCollisions,
   getViewportCenterRef,
+  onScaleReport,
 }) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -99,6 +100,13 @@ function PaddockCanvas({
   const imgHeight = bgImage ? bgImage.height : 1024;
   const physicalWidthMeters = eventData?.widthMeters || 250;
   const pixelsPerMeter = imgWidth / physicalWidthMeters;
+
+  // Przekaż aktualną skalę do nadrzędnego panelu HUD (PlannerPage)
+  useEffect(() => {
+    if (onScaleReport) {
+      onScaleReport(pixelsPerMeter);
+    }
+  }, [pixelsPerMeter, onScaleReport]);
 
   // Wykrywaj zmianę rozmiaru okna
   useEffect(() => {
@@ -601,59 +609,68 @@ function PaddockCanvas({
         pixelsPerMeter={pixelsPerMeter}
       />
 
-      {/* HUD: Kontrolki kamery */}
-      <div className="absolute bottom-6 left-6 z-30 flex flex-col gap-2 pointer-events-auto">
-        <div className="glass-panel p-2 flex flex-col gap-1.5 shadow-glass border-white/20">
-          <button
-            onClick={() => handleZoom('in')}
-            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg"
-            title="Przybliż (Zoom In)"
-          >
-            +
-          </button>
-          <button
-            onClick={() => handleZoom('out')}
-            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg"
-            title="Oddal (Zoom Out)"
-          >
-            −
-          </button>
-          <div className="w-full h-[1px] bg-white/10 my-0.5" />
-          <button
-            onClick={handleResetCamera}
-            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-indigo-300 text-xs font-semibold"
-            title="Wyśrodkuj kamerę na torze"
-          >
-            ⌂
-          </button>
+      {/* HUD: Kontrolki kamery i trybów połączone w jeden elegancki, półprzeźroczysty szklany panel (zgodnie ze zdjęciem) */}
+      <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
+        <div className="glass-panel p-3 flex items-center gap-3 shadow-glass border-white/20">
+          {/* Lewa kolumna: przyciski zoomu + - ⌂ */}
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <button
+              onClick={() => handleZoom('in')}
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
+              title="Przybliż (Zoom In)"
+            >
+              +
+            </button>
+            <button
+              onClick={() => handleZoom('out')}
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
+              title="Oddal (Zoom Out)"
+            >
+              −
+            </button>
+            <div className="w-full h-[1px] bg-white/15 my-0.5" />
+            <button
+              onClick={handleResetCamera}
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-indigo-300 text-xs font-semibold shadow-sm"
+              title="Wyśrodkuj kamerę na torze"
+            >
+              ⌂
+            </button>
+          </div>
+
+          {/* Pionowy separator */}
+          <div className="w-[1px] h-28 bg-white/15 shrink-0" />
+
+          {/* Prawa kolumna wewnątrz czarnego szklanego bloku: Tryb Przesuwania oraz Nakładanie */}
+          <div className="flex flex-col gap-2.5 justify-center w-48 shrink-0">
+            {/* Tryb Panning Toggle */}
+            <button
+              onClick={() => setIsPanMode(!isPanMode)}
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
+                isPanMode
+                  ? 'bg-indigo-600 border border-indigo-400 text-white shadow-indigo-500/30'
+                  : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
+            </button>
+
+            {/* Toggle Kolizji */}
+            {onToggleCollisions && (
+              <button
+                onClick={onToggleCollisions}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
+                  allowCollisions
+                    ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
+                    : 'bg-emerald-600/80 border border-emerald-400 text-white hover:bg-emerald-600'
+                }`}
+                title="Przełącz wykrywanie i blokowanie kolizji między namiotami"
+              >
+                <span>{allowCollisions ? '⚠️ Nakładanie: DOZW.' : '🛡️ Nakładanie: BLOKOWANE'}</span>
+              </button>
+            )}
+          </div>
         </div>
-
-        {/* Tryb Panning Toggle */}
-        <button
-          onClick={() => setIsPanMode(!isPanMode)}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all shadow-glass flex items-center gap-2 ${
-            isPanMode
-              ? 'bg-indigo-600/90 border border-indigo-400 text-white shadow-md'
-              : 'bg-[#080d1a]/95 backdrop-blur-md border border-white/20 text-white/95 hover:text-white hover:bg-[#111827]'
-          }`}
-        >
-          <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
-        </button>
-
-        {/* Toggle Kolizji (Zadanie 9) */}
-        {onToggleCollisions && (
-          <button
-            onClick={onToggleCollisions}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all shadow-glass flex items-center gap-2 ${
-              allowCollisions
-                ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
-                : 'bg-emerald-600/80 border border-emerald-400 text-white'
-            }`}
-            title="Przełącz wykrywanie i blokowanie kolizji między namiotami"
-          >
-            <span>{allowCollisions ? '⚠️ Nakładanie: DOZWOLONE' : '🛡️ Nakładanie: BLOKOWANE'}</span>
-          </button>
-        )}
       </div>
 
       {/* Toast ostrzegający o kolizji */}
@@ -663,16 +680,6 @@ function PaddockCanvas({
           <span>{collisionToast}</span>
         </div>
       )}
-
-      {/* HUD info o skali */}
-      <div className="absolute top-16 right-4 md:right-80 z-30 hidden sm:flex items-center gap-3 glass-panel px-4 py-2 border-white/15 text-xs text-white/70 font-mono">
-        <span className="flex items-center gap-1.5 text-emerald-300">
-          <span className="w-2 h-2 rounded-full bg-emerald-400" />
-          Skala: {pixelsPerMeter.toFixed(2)} px/m
-        </span>
-        <span>|</span>
-        <span>Teamów na torze: {placedTeams.length}</span>
-      </div>
 
       {/* Informacja o ładowaniu tła */}
       {bgStatus === 'loading' && (

@@ -30,32 +30,32 @@ body {
 /* ===== Glassmorphism Utilities (Dark Smoked Glass for High Contrast) ===== */
 @layer components {
   .glass-panel {
-    background: rgba(6, 10, 19, 0.95) !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    background: rgba(8, 13, 26, 0.62) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.20) !important;
     border-radius: 1rem !important;
-    box-shadow: 0 16px 45px 0 rgba(0, 0, 0, 0.85) !important;
+    box-shadow: 0 16px 45px 0 rgba(0, 0, 0, 0.75) !important;
   }
 
   .glass-panel-strong {
-    background: rgba(3, 6, 14, 0.97) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    background: rgba(6, 10, 20, 0.70) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
     border-radius: 1rem !important;
-    box-shadow: 0 20px 55px 0 rgba(0, 0, 0, 0.95) !important;
+    box-shadow: 0 20px 55px 0 rgba(0, 0, 0, 0.85) !important;
   }
 
   .glass-button {
-    background: rgba(15, 23, 42, 0.92) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    background: rgba(15, 23, 42, 0.65) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
     @apply border border-white/20 rounded-xl px-6 py-3 font-medium text-white transition-all duration-300 ease-out hover:border-white/35 hover:shadow-glass-lg active:scale-95;
   }
 
   .glass-button:hover {
-    background: rgba(30, 41, 59, 0.96) !important;
+    background: rgba(30, 41, 59, 0.78) !important;
   }
 
   .glass-button-primary {

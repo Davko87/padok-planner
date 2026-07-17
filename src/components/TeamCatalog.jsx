@@ -54,7 +54,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
       >
         <div className="glass-panel flex flex-col h-full overflow-hidden shadow-glass-lg border-white/25">
           {/* Header */}
-          <div className="p-4 border-b border-white/15 flex items-center justify-between bg-[#0a0f1d]/90">
+          <div className="p-4 border-b border-white/15 flex items-center justify-between bg-[#0a0f1d]/40">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
@@ -158,7 +158,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                       style={{
                         '--team-color': team.color || '#3b82f6',
                       }}
-                      className="group relative p-4 rounded-xl bg-[#0e1628]/95 border border-white/20 hover:border-white/35 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
+                      className="group relative p-4 rounded-xl bg-[#0e1628]/50 border border-white/20 hover:border-white/35 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
                     >
                       {/* Color glow accent bar on the left */}
                       <div

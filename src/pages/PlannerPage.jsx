@@ -17,6 +17,7 @@ function PlannerPage() {
   const [placedTeams, setPlacedTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
+  const [scalePx, setScalePx] = useState(0);
   const getViewportCenterRef = useRef(null);
 
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
@@ -293,6 +294,7 @@ function PlannerPage() {
         allowCollisions={allowCollisions}
         onToggleCollisions={() => setAllowCollisions((v) => !v)}
         getViewportCenterRef={getViewportCenterRef}
+        onScaleReport={setScalePx}
       />
 
       {/* ZADANIE: Górny panel szklany przeniesiony na lewą stronę w pionie (Pionowy Panel HUD po lewej) */}
@@ -326,6 +328,24 @@ function PlannerPage() {
                 Tor: {eventData.widthMeters} × {eventData.heightMeters || eventData.widthMeters} m
               </p>
             )}
+
+            {/* Przeniesiona Skala i Ilość Teamów (zgodnie ze zdjęciem) */}
+            <div className="mt-2 flex flex-col gap-1 text-[11px] font-mono bg-[#060a13]/40 p-2.5 rounded-xl border border-white/15 shadow-inner">
+              <div className="flex items-center justify-between text-emerald-300/95">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <span>Skala:</span>
+                </span>
+                <span className="font-bold">{scalePx ? `${scalePx.toFixed(2)} px/m` : '---'}</span>
+              </div>
+              <div className="flex items-center justify-between text-indigo-300/95">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                  <span>Teamów:</span>
+                </span>
+                <span className="font-bold">{placedTeams.length} szt.</span>
+              </div>
+            </div>
           </div>
 
           {/* Przycisk Usuń zaznaczony zespół */}
@@ -359,7 +379,7 @@ function PlannerPage() {
           </button>
 
           {/* Wskaźnik stanu zapisu w chmurze / lokalnie */}
-          <div className="flex items-center justify-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl border transition-all duration-300 bg-[#060a13]/90 border-white/20 text-center">
+          <div className="flex items-center justify-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl border transition-all duration-300 bg-[#060a13]/40 border-white/20 text-center">
             {saveStatus === 'saving' && (
               <>
                 <span className="w-2 h-2 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" />
