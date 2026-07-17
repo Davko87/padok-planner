@@ -23,15 +23,12 @@ function DuplicateTeamModal({ isOpen, onClose, onConfirm, teamName }) {
           </svg>
         </div>
 
-        <div className="space-y-2">
-          <h3 className="text-xl font-bold text-white tracking-wide">
-            Team już obecny na torze!
-          </h3>
-          <p className="text-white/70 text-sm leading-relaxed">
-            Namiot zespołu <span className="font-semibold text-amber-300">"{teamName || 'Zespól Wyścigowy'}"</span> znajduje się już w Twoim układzie padoku.
+        <div className="space-y-3 text-center">
+          <p className="text-white/90 text-base font-medium leading-relaxed">
+            Namiot zespołu <span className="font-bold text-amber-300">"{teamName || 'Zespól Wyścigowy'}"</span> istnieje już na torze.
           </p>
-          <p className="text-white/50 text-xs">
-            Czy na pewno chcesz umieścić kolejny namiot tego samego zespołu?
+          <p className="text-white/60 text-sm">
+            Czy chcesz dodać kolejny?
           </p>
         </div>
 
