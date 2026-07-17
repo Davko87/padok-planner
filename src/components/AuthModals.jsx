@@ -424,3 +424,76 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
     </div>
   );
 }
+
+export function DeleteAccountModal({ isOpen, onClose }) {
+  const { deleteAccount, currentUser } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleDelete = async () => {
+    try {
+      setIsSubmitting(true);
+      setError('');
+      await deleteAccount();
+      setIsSubmitting(false);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Wystąpił błąd podczas usuwania konta.');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in select-none">
+      <div className="glass-panel-strong w-full max-w-sm p-6 relative animate-slide-up shadow-2xl border-red-500/30 space-y-5">
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto shadow-glass mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-white tracking-wide">Usuwanie konta</h3>
+          <p className="text-white/60 text-xs leading-relaxed">
+            Czy na pewno chcesz usunąć konto <span className="text-white font-bold">{currentUser?.nick}</span>? 
+            Wszystkie Twoje prywatne zapisy torów zostaną utracone. Operacja jest bezpowrotna.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-semibold transition-all"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-red-600/80 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center justify-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin shrink-0" />
+                Usuwanie...
+              </>
+            ) : (
+              'Usuń trwale'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

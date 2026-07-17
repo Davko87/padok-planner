@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -194,8 +194,28 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('padok_current_user');
   };
 
+  const deleteAccount = async () => {
+    if (!currentUser) return;
+    try {
+      const cleanId = currentUser.nick.trim().toLowerCase();
+      // Usunięcie wpisu z Firestore (z głównej bazy users)
+      await deleteDoc(doc(db, 'users', cleanId)).catch(e => console.warn('Błąd usuwania z DB:', e));
+      
+      // Jeśli jesteśmy w Firebase Auth (cloud)
+      if (auth.currentUser) {
+        await auth.currentUser.delete().catch(e => console.warn('Błąd usuwania z Firebase Auth:', e));
+      }
+      
+      setCurrentUser(null);
+      localStorage.removeItem('padok_current_user');
+    } catch (err) {
+      console.error('Błąd usuwania konta:', err);
+      throw new Error('Wystąpił błąd podczas usuwania konta.');
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, loading, register, login, logout, checkNickAvailable }}>
+    <AuthContext.Provider value={{ currentUser, loading, register, login, logout, checkNickAvailable, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

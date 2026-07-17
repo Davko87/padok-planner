@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
@@ -10,6 +11,7 @@ import DuplicateTeamModal from '../components/DuplicateTeamModal.jsx';
 function PlannerPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [eventData, setEventData] = useState(null);
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
   const [errorEvent, setErrorEvent] = useState(null);
@@ -28,6 +30,11 @@ function PlannerPage() {
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
   const hasLoadedInitialTeams = useRef(false);
+
+  // Wymuszenie ponownego wczytania padoku (wyczyszczenie stanu) gdy użytkownik się zaloguje/wyloguje
+  useEffect(() => {
+    hasLoadedInitialTeams.current = false;
+  }, [currentUser?.uid]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -106,7 +113,7 @@ function PlannerPage() {
 
     // W tle wciąż nasłuchujemy na ewentualne zapisane zespoły w chmurze Firestore
     const docRef = doc(db, 'events', eventId);
-    const unsubscribe = onSnapshot(
+    const unsubscribeEvent = onSnapshot(
       docRef,
       (docSnap) => {
         clearTimeout(timeoutId);
@@ -118,7 +125,9 @@ function PlannerPage() {
             // Jeśli obiekt w chmurze nie ma zdjęcia, użyj zdjęcia z presetu Esri w jakości 2048px (HD)
             imageUrl: data.imageUrl || prev?.imageUrl || `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=16.7942,52.4170,16.7982,52.4200&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`,
           }));
-          if (!hasLoadedInitialTeams.current) {
+          
+          // Jeśli gość (nie zalogowany), ładujemy układy publiczne z głównego eventu
+          if (!currentUser && !hasLoadedInitialTeams.current) {
             setPlacedTeams(data.teams || []);
             hasLoadedInitialTeams.current = true;
           }
@@ -145,11 +154,32 @@ function PlannerPage() {
       }
     );
 
+    let unsubscribeLayout = null;
+    if (currentUser && !eventId.startsWith('local-')) {
+      const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
+      unsubscribeLayout = onSnapshot(layoutRef, (layoutSnap) => {
+        if (layoutSnap.exists()) {
+          const layoutData = layoutSnap.data();
+          if (!hasLoadedInitialTeams.current) {
+            setPlacedTeams(layoutData.teams || []);
+            hasLoadedInitialTeams.current = true;
+          }
+        } else {
+          // Brak własnego układu na serwerze - pusta, czysta karta na start!
+          if (!hasLoadedInitialTeams.current) {
+            setPlacedTeams([]);
+            hasLoadedInitialTeams.current = true;
+          }
+        }
+      });
+    }
+
     return () => {
       clearTimeout(timeoutId);
-      unsubscribe();
+      unsubscribeEvent();
+      if (unsubscribeLayout) unsubscribeLayout();
     };
-  }, [eventId]);
+  }, [eventId, currentUser?.uid]);
 
   // ZADANIE 7: Ręczny zapis układu po kliknięciu przycisku "Zapisz układ"
   const handleSavePaddock = async () => {
@@ -171,11 +201,21 @@ function PlannerPage() {
     }
     try {
       setSaveStatus('saving');
-      const docRef = doc(db, 'events', eventId);
-      await updateDoc(docRef, {
-        teams: placedTeams,
-        updatedAt: serverTimestamp(),
-      });
+      if (currentUser) {
+        // Zalogowany użytkownik: zapisujemy tylko dla niego (izolacja per-konto)
+        const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
+        await setDoc(layoutRef, {
+          teams: placedTeams,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Użytkownik anonimowy: zapisujemy na głównym evencie
+        const docRef = doc(db, 'events', eventId);
+        await updateDoc(docRef, {
+          teams: placedTeams,
+          updatedAt: serverTimestamp(),
+        });
+      }
       setSaveStatus('saved');
     } catch (err) {
       console.error('Błąd ręcznego zapisu układu do Firestore:', err);

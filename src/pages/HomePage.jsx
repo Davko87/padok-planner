@@ -4,13 +4,14 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters } from '../lib/geoUtils.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { LoginModal, RegisterModal } from '../components/AuthModals.jsx';
+import { LoginModal, RegisterModal, DeleteAccountModal } from '../components/AuthModals.jsx';
 
 function HomePage() {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
   // Kontenery dla Globusu 3D (globe.gl) oraz Mapy Satelitarnej (Leaflet)
   const globeContainerRef = useRef(null);
@@ -605,13 +606,22 @@ function HomePage() {
                 {currentUser.nick}
               </span>
             </div>
-            <button
-              onClick={logout}
-              className="text-[11px] text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-all active:scale-95"
-              title="Wyloguj się"
-            >
-              Wyloguj
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={logout}
+                className="text-[11px] text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-all active:scale-95"
+                title="Wyloguj się"
+              >
+                Wyloguj
+              </button>
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1 rounded-lg border border-red-500/20 transition-all active:scale-95"
+                title="Usuń konto"
+              >
+                Usuń konto
+              </button>
+            </div>
           </div>
         ) : (
           <div className="glass-panel-strong p-1.5 rounded-xl border-white/20 flex items-center gap-1.5 shadow-glass">
@@ -1003,6 +1013,10 @@ function HomePage() {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         onSwitchToLogin={() => setIsLoginModalOpen(true)}
+      />
+      <DeleteAccountModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
       />
     </div>
   );
