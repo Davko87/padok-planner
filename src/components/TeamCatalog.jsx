@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import NewTeamModal from './NewTeamModal.jsx';
 
@@ -8,7 +8,23 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
+  const [deletingTeam, setDeletingTeam] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const handleDeleteTeam = async () => {
+    if (!deletingTeam) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'teams_templates', deletingTeam.id));
+      setDeletingTeam(null);
+    } catch (error) {
+      console.error('Błąd usuwania teamu:', error);
+      alert('Wystąpił błąd podczas usuwania teamu.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     // Real-time listener for teams_templates
@@ -202,6 +218,17 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setDeletingTeam(team);
+                          }}
+                          className="p-1.5 rounded-md bg-red-500/10 text-red-400 hover:text-red-200 hover:bg-red-500/30 transition-all text-xs flex items-center justify-center"
+                          title="Usuń team z katalogu"
+                        >
+                          🗑️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             onSelectTeam && onSelectTeam(team);
                           }}
                           className="p-1.5 px-2 rounded-md bg-indigo-600/80 text-white font-bold hover:bg-indigo-600 transition-all text-xs flex items-center justify-center shadow"
@@ -250,6 +277,49 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
         editingTeam={editingTeam}
         onUpdateTemplate={onUpdateTemplate}
       />
+      {/* Moda dla usunięcia teamu */}
+      {deletingTeam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in select-none">
+          <div className="glass-panel-strong w-full max-w-sm p-6 relative animate-slide-up shadow-2xl border-red-500/30 space-y-5">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto shadow-glass mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white tracking-wide">Usuwanie teamu</h3>
+              <p className="text-white/60 text-xs leading-relaxed">
+                Czy na pewno chcesz usunąć team <span className="text-white font-bold" style={{ color: deletingTeam.color || '#fff' }}>{deletingTeam.name}</span> z katalogu?
+                Ta operacja jest bezpowrotna, ale nie wpłynie na namioty już ułożone na padokach.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setDeletingTeam(null)}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-semibold transition-all"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleDeleteTeam}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600/80 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin shrink-0" />
+                    Usuwanie...
+                  </>
+                ) : (
+                  'Usuń team'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
