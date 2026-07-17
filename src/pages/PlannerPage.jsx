@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
-import { findCleanSpotForNode } from '../lib/geoUtils.js';
+import { findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
 
@@ -17,6 +17,7 @@ function PlannerPage() {
   const [placedTeams, setPlacedTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
+  const [enableMagnet, setEnableMagnet] = useState(true);
   const [scalePx, setScalePx] = useState(0);
   const getViewportCenterRef = useRef(null);
 
@@ -259,6 +260,12 @@ function PlannerPage() {
     if (!allowCollisions) {
       newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, ppm);
     }
+    if (enableMagnet) {
+      const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, ppm, 4.0);
+      if (snapped) {
+        newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
+      }
+    }
 
     const updated = [...placedTeams, newTeamNode];
     setPlacedTeams(updated);
@@ -293,6 +300,8 @@ function PlannerPage() {
         onSelectTeam={setSelectedTeamId}
         allowCollisions={allowCollisions}
         onToggleCollisions={() => setAllowCollisions((v) => !v)}
+        enableMagnet={enableMagnet}
+        onToggleMagnet={() => setEnableMagnet((v) => !v)}
         getViewportCenterRef={getViewportCenterRef}
         onScaleReport={setScalePx}
       />

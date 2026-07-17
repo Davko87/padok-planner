@@ -237,3 +237,158 @@ export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter) {
   return candidate;
 }
 
+/**
+ * Znajduje pozycję przyciągniętą jak magnes do krawędzi sąsiednich namiotów.
+ *
+ * @param {object} targetTeam - Aktualnie przesuwany zespół
+ * @param {Array<object>} allTeams - Lista wszystkich zespołów na torze
+ * @param {number} pixelsPerMeter - Skala px/m
+ * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 3.5m)
+ * @returns {object|null} Zwraca { x, y, rotation, snappedToId } lub null, jeśli brakuje bliskich sąsiadów
+ */
+export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 3.5) {
+  if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
+
+  const thresholdPx = snapThresholdMeters * pixelsPerMeter;
+  const T_w = targetTeam.widthMeters * pixelsPerMeter;
+  const T_h = targetTeam.heightMeters * pixelsPerMeter;
+  const T_rot = targetTeam.rotation || 0;
+
+  let bestCandidate = null;
+  let minDistance = thresholdPx;
+
+  for (const other of allTeams) {
+    if (other.id === targetTeam.id) continue;
+
+    const O_x = other.x;
+    const O_y = other.y;
+    const O_w = other.widthMeters * pixelsPerMeter;
+    const O_h = other.heightMeters * pixelsPerMeter;
+    const O_rot = other.rotation || 0;
+
+    // Sprawdź czy kąt jest bliski (np. w granicach +- 25 stopni lub ich wielokrotności 90 stopni)
+    // Jeśli rotacje są identyczne lub bliskie, przyciągamy wzdłuż osi prostokąta sąsiada
+    const rotDiff = Math.abs(((T_rot - O_rot + 180) % 360) - 180);
+    const isAngleCompatible = rotDiff <= 25 || Math.abs(rotDiff - 90) <= 25 || Math.abs(rotDiff - 180) <= 25 || Math.abs(rotDiff - 270) <= 25;
+
+    // Szybki odsiew odległości (Bounding sphere / center distance)
+    const centerT = { x: targetTeam.x + T_w / 2, y: targetTeam.y + T_h / 2 };
+    const centerO = { x: O_x + O_w / 2, y: O_y + O_h / 2 };
+    const approxDist = Math.hypot(centerT.x - centerO.x, centerT.y - centerO.y);
+    if (approxDist > Math.max(T_w, T_h) + Math.max(O_w, O_h) + thresholdPx) {
+      continue;
+    }
+
+    // Wersory lokalnego układu współrzędnych sąsiada (O)
+    const rad = (O_rot * Math.PI) / 180;
+    const u = { x: Math.cos(rad), y: Math.sin(rad) };
+    const v = { x: -Math.sin(rad), y: Math.cos(rad) };
+
+    // Rzut aktualnego położenia targetu (T.x, T.y) względem początku sąsiada (O.x, O.y)
+    const dx = targetTeam.x - O_x;
+    const dy = targetTeam.y - O_y;
+    const proj_u = dx * u.x + dy * u.y; // pozycja wzdłuż szerokości sąsiada
+    const proj_v = dx * v.x + dy * v.y; // pozycja wzdłuż wysokości sąsiada
+
+    // Określ optymalny kąt po przyciągnięciu: jeśli rotDiff bliskie 0, przyciągnij do O_rot
+    let targetSnappedRot = T_rot;
+    if (rotDiff <= 25) {
+      targetSnappedRot = O_rot;
+    }
+
+    // Jeśli rotacja po przyciągnięciu jest równa O_rot, możemy precyzyjnie przyciągać do 4 ścian:
+    if (Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) <= 5) {
+      const candidates = [];
+
+      // 1. Ściana PRAWA (Target bezpośrednio po prawej od Other) -> proj_u powinno wynosić O_w
+      {
+        const cand_u = O_w;
+        // Sprawdź wyrównanie wzdłuż wysokości (v): do góry (0), do dołu (O_h - T_h) lub wyśrodkowane ((O_h - T_h)/2) lub bieżące
+        const alignTop = 0;
+        const alignBot = O_h - T_h;
+        const alignMid = (O_h - T_h) / 2;
+
+        let cand_v = proj_v;
+        if (Math.abs(proj_v - alignTop) < thresholdPx * 0.7) cand_v = alignTop;
+        else if (Math.abs(proj_v - alignBot) < thresholdPx * 0.7) cand_v = alignBot;
+        else if (Math.abs(proj_v - alignMid) < thresholdPx * 0.7) cand_v = alignMid;
+
+        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
+      }
+
+      // 2. Ściana LEWA (Target po lewej) -> proj_u powinno wynosić -T_w
+      {
+        const cand_u = -T_w;
+        const alignTop = 0;
+        const alignBot = O_h - T_h;
+        const alignMid = (O_h - T_h) / 2;
+
+        let cand_v = proj_v;
+        if (Math.abs(proj_v - alignTop) < thresholdPx * 0.7) cand_v = alignTop;
+        else if (Math.abs(proj_v - alignBot) < thresholdPx * 0.7) cand_v = alignBot;
+        else if (Math.abs(proj_v - alignMid) < thresholdPx * 0.7) cand_v = alignMid;
+
+        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
+      }
+
+      // 3. Ściana DOLNA (Target poniżej) -> proj_v powinno wynosić O_h
+      {
+        const cand_v = O_h;
+        const alignLeft = 0;
+        const alignRight = O_w - T_w;
+        const alignMid = (O_w - T_w) / 2;
+
+        let cand_u = proj_u;
+        if (Math.abs(proj_u - alignLeft) < thresholdPx * 0.7) cand_u = alignLeft;
+        else if (Math.abs(proj_u - alignRight) < thresholdPx * 0.7) cand_u = alignRight;
+        else if (Math.abs(proj_u - alignMid) < thresholdPx * 0.7) cand_u = alignMid;
+
+        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
+      }
+
+      // 4. Ściana GÓRNA (Target powyżej) -> proj_v powinno wynosić -T_h
+      {
+        const cand_v = -T_h;
+        const alignLeft = 0;
+        const alignRight = O_w - T_w;
+        const alignMid = (O_w - T_w) / 2;
+
+        let cand_u = proj_u;
+        if (Math.abs(proj_u - alignLeft) < thresholdPx * 0.7) cand_u = alignLeft;
+        else if (Math.abs(proj_u - alignRight) < thresholdPx * 0.7) cand_u = alignRight;
+        else if (Math.abs(proj_u - alignMid) < thresholdPx * 0.7) cand_u = alignMid;
+
+        candidates.push({ proj_u: cand_u, proj_v: cand_v, rot: O_rot });
+      }
+
+      // Wybierz najbliższego bezkolizyjnego kandydata z tej czwórki
+      for (const cand of candidates) {
+        const snapX = O_x + cand.proj_u * u.x + cand.proj_v * v.x;
+        const snapY = O_y + cand.proj_u * u.y + cand.proj_v * v.y;
+        const dist = Math.hypot(snapX - targetTeam.x, snapY - targetTeam.y);
+
+        if (dist < minDistance) {
+          const testNode = {
+            ...targetTeam,
+            x: snapX,
+            y: snapY,
+            rotation: cand.rot,
+          };
+          const collision = checkTeamCollidesWithOthers(testNode, allTeams, pixelsPerMeter, targetTeam.id);
+          if (!collision || collision === other.id) {
+            minDistance = dist;
+            bestCandidate = {
+              x: snapX,
+              y: snapY,
+              rotation: cand.rot,
+              snappedToId: other.id,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return bestCandidate;
+}
+

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Transformer } from 'react-konva';
 import useImage from 'use-image';
 import DPadControls from './DPadControls.jsx';
-import { checkTeamCollidesWithOthers, findCleanSpotForNode } from '../lib/geoUtils.js';
+import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 
 function PaddockCanvas({
   eventData,
@@ -12,6 +12,8 @@ function PaddockCanvas({
   onSelectTeam,
   allowCollisions = false,
   onToggleCollisions,
+  enableMagnet = false,
+  onToggleMagnet,
   getViewportCenterRef,
   onScaleReport,
 }) {
@@ -221,6 +223,12 @@ function PaddockCanvas({
       if (!allowCollisions) {
         newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
       }
+      if (enableMagnet) {
+        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 4.0);
+        if (snapped) {
+          newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
+        }
+      }
 
       const newTeamsList = [...placedTeams, newTeamNode];
       onUpdateTeams && onUpdateTeams(newTeamsList);
@@ -240,11 +248,28 @@ function PaddockCanvas({
   // Obsługa przeciągania pojedynczego teamu po canvasie
   const handleTeamDragEnd = (index, e) => {
     const team = placedTeams[index];
-    const candidate = {
+    let candidate = {
       ...team,
       x: e.target.x(),
       y: e.target.y(),
     };
+
+    if (enableMagnet) {
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.0);
+      if (snapped) {
+        candidate = {
+          ...candidate,
+          x: snapped.x,
+          y: snapped.y,
+          rotation: snapped.rotation !== undefined ? snapped.rotation : candidate.rotation,
+        };
+        e.target.x(candidate.x);
+        e.target.y(candidate.y);
+        if (snapped.rotation !== undefined) {
+          e.target.rotation(candidate.rotation);
+        }
+      }
+    }
 
     const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
 
@@ -515,11 +540,27 @@ function PaddockCanvas({
                   onSelectTeam && onSelectTeam(team.id);
                 }}
                 onDragMove={(e) => {
-                  const candidate = {
+                  let candidate = {
                     ...team,
                     x: e.target.x(),
                     y: e.target.y(),
                   };
+                  if (enableMagnet) {
+                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 3.5);
+                    if (snapped) {
+                      candidate = {
+                        ...candidate,
+                        x: snapped.x,
+                        y: snapped.y,
+                        rotation: snapped.rotation !== undefined ? snapped.rotation : candidate.rotation,
+                      };
+                      e.target.x(candidate.x);
+                      e.target.y(candidate.y);
+                      if (snapped.rotation !== undefined) {
+                        e.target.rotation(candidate.rotation);
+                      }
+                    }
+                  }
                   const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
                   if (collidedId) {
                     setCollidingTeamIds([team.id, collidedId]);
@@ -639,14 +680,14 @@ function PaddockCanvas({
           </div>
 
           {/* Pionowy separator */}
-          <div className="w-[1px] h-28 bg-white/15 shrink-0" />
+          <div className="w-[1px] self-stretch min-h-[100px] bg-white/15 shrink-0" />
 
-          {/* Prawa kolumna wewnątrz czarnego szklanego bloku: Tryb Przesuwania oraz Nakładanie */}
-          <div className="flex flex-col gap-2.5 justify-center w-48 shrink-0">
+          {/* Prawa kolumna wewnątrz czarnego szklanego bloku: Tryb Przesuwania, Magnes oraz Nakładanie */}
+          <div className="flex flex-col gap-2 justify-center w-52 shrink-0">
             {/* Tryb Panning Toggle */}
             <button
               onClick={() => setIsPanMode(!isPanMode)}
-              className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
+              className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
                 isPanMode
                   ? 'bg-indigo-600 border border-indigo-400 text-white shadow-indigo-500/30'
                   : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
@@ -655,11 +696,26 @@ function PaddockCanvas({
               <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
             </button>
 
+            {/* Toggle Magnesu */}
+            {onToggleMagnet && (
+              <button
+                onClick={onToggleMagnet}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
+                  enableMagnet
+                    ? 'bg-cyan-600 border border-cyan-400 text-white shadow-cyan-500/30'
+                    : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+                }`}
+                title="Przełącz automatyczne przyciąganie namiotów do siebie jak magnes podczas przesuwania"
+              >
+                <span>{enableMagnet ? '🧲 Magnes: WŁĄCZONY' : '🧲 Magnes: WYŁĄCZONY'}</span>
+              </button>
+            )}
+
             {/* Toggle Kolizji */}
             {onToggleCollisions && (
               <button
                 onClick={onToggleCollisions}
-                className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
+                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
                   allowCollisions
                     ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
                     : 'bg-emerald-600/80 border border-emerald-400 text-white hover:bg-emerald-600'
