@@ -238,16 +238,25 @@ export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter) {
 }
 
 /**
+ * Pomocnicza funkcja licząca najkrótszy dystans kątowy (w stopniach 0..180) niezależnie od znaku i przekroczeń 360.
+ */
+function getShortestAngleDiff(a, b) {
+  let diff = Math.abs((a - b) % 360);
+  if (diff > 180) diff = 360 - diff;
+  return diff;
+}
+
+/**
  * Znajduje pozycję przyciągniętą jak magnes do krawędzi sąsiednich namiotów.
  * Automatycznie synchronizuje obrót (kąt) przesuwanego namiotu z sąsiadem i precyzyjnie wyrównuje krawędzie.
  *
  * @param {object} targetTeam - Aktualnie przesuwany zespół
  * @param {Array<object>} allTeams - Lista wszystkich zespołów na torze
  * @param {number} pixelsPerMeter - Skala px/m
- * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 4.5m)
+ * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 0.8m)
  * @returns {object|null} Zwraca { x, y, rotation, snappedToId } lub null, jeśli brakuje bliskich sąsiadów
  */
-export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 4.5) {
+export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.8) {
   if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
 
   const thresholdPx = snapThresholdMeters * pixelsPerMeter;
@@ -286,25 +295,29 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     const proj_u = dx * u.x + dy * u.y;
     const proj_v = dx * v.x + dy * v.y;
 
-    // Automatyczna synchronizacja kąta do najbliższej wielokrotności 90 stopni względem O_rot
-    const diff0 = Math.abs(((T_rot - O_rot + 180) % 360) - 180);
-    const diff90 = Math.abs(((T_rot - (O_rot + 90) + 180) % 360) - 180);
-    const diff180 = Math.abs(((T_rot - (O_rot + 180) + 180) % 360) - 180);
-    const diff270 = Math.abs(((T_rot - (O_rot + 270) + 180) % 360) - 180);
+    // Automatyczna synchronizacja kąta do najbliższej wielokrotności 90 stopni względem O_rot (z bezpiecznym modulo)
+    const diff0 = getShortestAngleDiff(T_rot, O_rot);
+    const diff90 = getShortestAngleDiff(T_rot, O_rot + 90);
+    const diff180 = getShortestAngleDiff(T_rot, O_rot + 180);
+    const diff270 = getShortestAngleDiff(T_rot, O_rot + 270);
 
     let targetSnappedRot = O_rot;
+    let isRotated90 = false;
     if (diff0 <= diff90 && diff0 <= diff180 && diff0 <= diff270) {
       targetSnappedRot = O_rot;
+      isRotated90 = false;
     } else if (diff90 <= diff180 && diff90 <= diff270) {
       targetSnappedRot = (O_rot + 90) % 360;
+      isRotated90 = true;
     } else if (diff180 <= diff270) {
       targetSnappedRot = (O_rot + 180) % 360;
+      isRotated90 = false;
     } else {
       targetSnappedRot = (O_rot + 270) % 360;
+      isRotated90 = true;
     }
 
-    // Oblicz wymiary przesuwanego namiotu w układzie lokalnym sąsiada (jeśli obrócony o 90/270, zamień w z h)
-    const isRotated90 = Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) > 45 && Math.abs(((targetSnappedRot - O_rot + 180) % 360) - 180) < 135;
+    // Oblicz wymiary przesuwanego namiotu w układzie lokalnym sąsiada
     const T_w_local = isRotated90 ? T_h : T_w;
     const T_h_local = isRotated90 ? T_w : T_h;
 

@@ -224,7 +224,7 @@ function PaddockCanvas({
         newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
       }
       if (enableMagnet) {
-        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 4.5);
+        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 0.8);
         if (snapped) {
           newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
         }
@@ -255,7 +255,7 @@ function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -312,7 +312,7 @@ function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -360,7 +360,7 @@ function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -573,7 +573,7 @@ function PaddockCanvas({
                     y: e.target.y(),
                   };
                   if (enableMagnet) {
-                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 4.5);
+                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
                     if (snapped) {
                       candidate = {
                         ...candidate,
