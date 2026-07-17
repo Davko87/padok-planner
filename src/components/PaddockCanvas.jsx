@@ -612,8 +612,8 @@ function PaddockCanvas({
           onClick={() => setIsPanMode(!isPanMode)}
           className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all shadow-glass flex items-center gap-2 ${
             isPanMode
-              ? 'bg-indigo-500/80 border border-indigo-400 text-white'
-              : 'bg-white/10 backdrop-blur-md border border-white/20 text-white/70 hover:text-white'
+              ? 'bg-indigo-600/90 border border-indigo-400 text-white shadow-md'
+              : 'bg-slate-900/85 backdrop-blur-xl border border-white/20 text-white/90 hover:text-white hover:bg-slate-800'
           }`}
         >
           <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>

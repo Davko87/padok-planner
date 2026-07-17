@@ -27,39 +27,39 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ===== Glassmorphism Utilities ===== */
+/* ===== Glassmorphism Utilities (Dark Smoked Glass for High Contrast) ===== */
 @layer components {
   .glass-panel {
-    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    @apply bg-slate-950/85 backdrop-blur-xl border border-white/20 rounded-2xl;
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.7);
   }
 
   .glass-panel-strong {
-    @apply bg-white/15 backdrop-blur-xl border border-white/25 rounded-2xl;
-    box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.5);
+    @apply bg-slate-950/92 backdrop-blur-2xl border border-white/25 rounded-2xl;
+    box-shadow: 0 16px 50px 0 rgba(0, 0, 0, 0.85);
   }
 
   .glass-button {
-    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl
+    @apply bg-slate-900/85 backdrop-blur-lg border border-white/20 rounded-xl
            px-6 py-3 font-medium text-white
            transition-all duration-300 ease-out
-           hover:bg-white/20 hover:border-white/30 hover:shadow-glass-lg
+           hover:bg-slate-800 hover:border-white/35 hover:shadow-glass-lg
            active:scale-95;
   }
 
   .glass-button-primary {
-    @apply bg-indigo-500/30 backdrop-blur-lg border border-indigo-400/30 rounded-xl
-           px-6 py-3 font-medium text-white
+    @apply bg-indigo-600/85 backdrop-blur-lg border border-indigo-400/40 rounded-xl
+           px-6 py-3 font-semibold text-white
            transition-all duration-300 ease-out
-           hover:bg-indigo-500/50 hover:border-indigo-400/50 hover:shadow-glass-lg
+           hover:bg-indigo-600 hover:border-indigo-400/70 hover:shadow-glass-lg
            active:scale-95;
   }
 
   .glass-input {
-    @apply bg-white/5 backdrop-blur-lg border border-white/15 rounded-xl
+    @apply bg-slate-900/85 backdrop-blur-lg border border-white/20 rounded-xl
            px-4 py-3 text-white placeholder-white/40
            outline-none transition-all duration-300
-           focus:border-indigo-400/50 focus:bg-white/10 focus:ring-2 focus:ring-indigo-400/20;
+           focus:border-indigo-400/70 focus:bg-slate-900 focus:ring-2 focus:ring-indigo-400/30;
   }
 }
 

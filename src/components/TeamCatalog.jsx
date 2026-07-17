@@ -54,7 +54,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
       >
         <div className="glass-panel flex flex-col h-full overflow-hidden shadow-glass-lg border-white/25">
           {/* Header */}
-          <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5 backdrop-blur-md">
+          <div className="p-4 border-b border-white/15 flex items-center justify-between bg-slate-900/70 backdrop-blur-md">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
@@ -78,7 +78,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
               </svg>
             </button>
           </div>
@@ -88,7 +88,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
             <div className="flex-1 flex flex-col items-center justify-between py-6">
               <div className="flex flex-col gap-3 items-center">
                 <span className="text-[10px] uppercase font-bold tracking-widest text-white/40 writing-mode-vertical rotate-180 py-4">
-                  Szablony ({teams.length})
+                  KATALOG
                 </span>
               </div>
               <button
@@ -96,8 +96,8 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                   setEditingTeam(null);
                   setIsModalOpen(true);
                 }}
-                className="w-10 h-10 rounded-xl bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center text-white hover:bg-indigo-500/50 hover:scale-110 transition-all shadow-glass"
-                title="Nowy Team"
+                className="w-10 h-10 rounded-xl bg-indigo-600/80 border border-indigo-400/40 flex items-center justify-center text-white hover:bg-indigo-600 hover:scale-110 transition-all shadow-glass"
+                title="Nowy szablon"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
@@ -115,12 +115,12 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                     <span className="text-xs">Ładowanie szablonów...</span>
                   </div>
                 ) : teams.length === 0 ? (
-                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-white/10 bg-white/5">
+                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-white/15 bg-slate-900/60">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white/20 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
                     </svg>
-                    <p className="text-sm font-medium text-white/60 mb-1">Brak teamów</p>
-                    <p className="text-xs text-white/40">Dodaj pierwszy szablon zespołu poniżej.</p>
+                    <p className="text-sm font-medium text-white/80 mb-1">Brak teamów</p>
+                    <p className="text-xs text-white/50">Dodaj pierwszy szablon zespołu poniżej.</p>
                   </div>
                 ) : (
                   teams.map((team) => (
@@ -134,7 +134,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                       style={{
                         '--team-color': team.color || '#3b82f6',
                       }}
-                      className="group relative p-4 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-white/30 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
+                      className="group relative p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/15 hover:border-white/30 cursor-grab active:cursor-grabbing transition-all duration-300 transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-[0_12px_24px_-4px_var(--team-color)] flex items-center justify-between overflow-hidden"
                     >
                       {/* Color glow accent bar on the left */}
                       <div
@@ -146,11 +146,11 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                         <span className="font-semibold text-white truncate text-sm group-hover:text-indigo-200 transition-colors">
                           {team.name}
                         </span>
-                        <div className="flex items-center gap-2 text-xs text-white/50 font-mono">
-                          <span className="bg-white/10 px-2 py-0.5 rounded-md border border-white/5">
+                        <div className="flex items-center gap-2 text-xs text-white/60 font-mono">
+                          <span className="bg-slate-800/80 px-2 py-0.5 rounded-md border border-white/10">
                             {team.width} × {team.length} m
                           </span>
-                          <span className="text-[10px] text-white/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[10px] text-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
                             (przeciągnij)
                           </span>
                         </div>
@@ -180,7 +180,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                             e.stopPropagation();
                             onSelectTeam && onSelectTeam(team);
                           }}
-                          className="p-1.5 px-2 rounded-md bg-indigo-500/30 text-white font-bold hover:bg-indigo-500/50 transition-all text-xs flex items-center justify-center shadow"
+                          className="p-1.5 px-2 rounded-md bg-indigo-600/80 text-white font-bold hover:bg-indigo-600 transition-all text-xs flex items-center justify-center shadow"
                           title="Umieść na torze"
                         >
                           +
@@ -192,7 +192,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
               </div>
 
               {/* Bottom bar with button */}
-              <div className="p-4 border-t border-white/10 bg-black/20 backdrop-blur-md">
+              <div className="p-4 border-t border-white/15 bg-slate-950/80 backdrop-blur-md">
                 <button
                   onClick={() => {
                     setEditingTeam(null);

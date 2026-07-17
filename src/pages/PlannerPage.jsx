@@ -358,7 +358,7 @@ function PlannerPage() {
             </button>
 
             {/* Wskaźnik stanu zapisu w chmurze / lokalnie */}
-            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-xl border transition-all duration-300 bg-white/5 border-white/10">
+            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-xl border transition-all duration-300 bg-slate-900/85 border-white/20">
               {saveStatus === 'saving' && (
                 <>
                   <span className="w-2 h-2 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" />
