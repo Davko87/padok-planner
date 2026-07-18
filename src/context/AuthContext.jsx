@@ -74,27 +74,17 @@ export function AuthProvider({ children }) {
         return false; // Zajęty
       }
 
-      // Jeśli nie ma w cache, wykonujemy szybkie i niezawodne zapytanie HTTP REST.
-      // Całkowicie omija to problem zawieszających się WebSocketów w SDK Firestore!
-      const projectId = app.options.projectId;
-      const apiKey = app.options.apiKey;
-      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${cleanNick}?key=${apiKey}`;
+      // Jeśli nie ma w cache, odpytujemy serwer przy użyciu standardowego SDK.
+      // Usunięto sztuczny timeout (1.5s), ponieważ inicjalizacja połączenia Firebase 
+      // przy pierwszym zapytaniu może trwać 2-3 sekundy na wolniejszych łączach.
+      const getPromise = getDoc(userDocRef);
+      // Dajemy Firebase tyle czasu, ile potrzebuje (max kilkanaście sekund domyślnie w SDK)
+      const docSnap = await getPromise;
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (response.status === 200) {
-        return false; // Dokument istnieje, nick zajęty
-      } else if (response.status === 404) {
-        return true; // Dokument NIE istnieje, nick na pewno wolny!
-      } else {
-        return null; // Inny błąd (np. 403 brak uprawnień)
-      }
+      return !docSnap.exists(); // Jeśli dokument nie istnieje, to nick jest wolny (true)
     } catch (e) {
-      return null; // W razie braku internetu lub timeoutu
+      console.error('Błąd getDoc przy sprawdzaniu nicku:', e);
+      return null; // Zwracamy null tylko przy faktycznym błędzie sieci (np. brak internetu)
     }
   };
 
