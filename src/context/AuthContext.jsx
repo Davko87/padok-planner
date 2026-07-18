@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db } from '../lib/firebase.js';
+import { app, auth, db } from '../lib/firebase.js';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -74,14 +74,26 @@ export function AuthProvider({ children }) {
         return false; // Zajęty
       }
 
-      // Jeśli nie ma w cache, pytamy serwer z timeoutem
-      const getPromise = getDoc(userDocRef);
-      // Szybki timeout - jeśli baza wisi, zwracamy null (nie wiemy)
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
-      const docSnap = await Promise.race([getPromise, timeoutPromise]);
-      return !docSnap.exists();
+      // Jeśli nie ma w cache, wykonujemy szybkie i niezawodne zapytanie HTTP REST.
+      // Całkowicie omija to problem zawieszających się WebSocketów w SDK Firestore!
+      const projectId = app.options.projectId;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${cleanNick}`;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (response.status === 200) {
+        return false; // Dokument istnieje, nick zajęty
+      } else if (response.status === 404) {
+        return true; // Dokument NIE istnieje, nick na pewno wolny!
+      } else {
+        return null; // Inny błąd (np. 403 brak uprawnień)
+      }
     } catch (e) {
-      return null; // W razie problemów z siecią zwracamy null, żeby nie kłamać że wolny. (zabezpieczenie główne jest w rejestracji Auth)
+      return null; // W razie braku internetu lub timeoutu
     }
   };
 
