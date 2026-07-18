@@ -133,6 +133,8 @@ export function AuthProvider({ children }) {
     const cleanId = cleanNick.toLowerCase();
     const pseudoEmail = `${cleanId}@padok.app`;
 
+    let authError = '';
+
     // 1. Najpierw Firebase Auth (HTTP, bardziej niezawodne przy problemach z websocketami Firestore)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, pseudoEmail, password);
@@ -147,9 +149,9 @@ export function AuthProvider({ children }) {
       return { success: true, user: userObj };
     } catch (err) {
       if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        // Jeśli Auth jasno mówi, że zły e-mail/hasło, to nie sprawdzamy dalej w Firestore
         throw new Error('Nieprawidłowy nick lub hasło!');
       }
+      authError = err.message;
       console.warn('Logowanie Auth się nie powiodło (offline/błąd), fallback do Firestore:', err);
     }
 
@@ -178,7 +180,7 @@ export function AuthProvider({ children }) {
       }
     } catch (e) {
       if (e.message === 'Nieprawidłowe hasło!' || e.message === 'Konto nie istnieje!') throw e;
-      throw new Error('Nie udało się zalogować. Sprawdź połączenie.');
+      throw new Error(`Nie udało się zalogować. Auth błąd: ${authError}. Błąd bazy: ${e.message}`);
     }
   };
 
