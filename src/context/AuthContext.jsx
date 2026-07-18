@@ -67,12 +67,12 @@ export function AuthProvider({ children }) {
     const cleanNick = nick.trim().toLowerCase();
     try {
       const getPromise = getDoc(doc(db, 'users', cleanNick));
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+      // Szybki timeout - jeśli baza wisi, zakładamy wolny
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
       const docSnap = await Promise.race([getPromise, timeoutPromise]);
       return !docSnap.exists();
     } catch (e) {
-      console.warn('Timeout checkNickAvailable:', e);
-      return null; // Zwracamy null zamiast true, jeśli błąd sieci, żeby nie kłamać że wolny
+      return true; // W razie problemów z siecią przepuszczamy dalej (zabezpieczenie jest w rejestracji Auth)
     }
   };
 
@@ -81,40 +81,9 @@ export function AuthProvider({ children }) {
     const cleanId = cleanNick.toLowerCase();
     const pseudoEmail = `${cleanId}@padok.app`;
 
-    // 1. Sprawdzenie w Firestore czy nick już istnieje (maksymalnie 8 sekund timeoutu)
-    const userDocRef = doc(db, 'users', cleanId);
-    let docSnap = null;
+    // 1. Rejestracja w Firebase Auth (główne i niezawodne źródło przez HTTP)
     try {
-      const getPromise = getDoc(userDocRef);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
-      docSnap = await Promise.race([getPromise, timeoutPromise]);
-    } catch (e) {
-      console.warn('Sprawdzanie nicku Firestore offline/timeout -> proceed:', e);
-    }
-
-    if (docSnap && docSnap.exists()) {
-      throw new Error('Użytkownik o takim nicku już istnieje!');
-    }
-
-    // 2. Utworzenie konta w Firestore z await, by upewnić się, że zapis się udał
-    try {
-      const setPromise = setDoc(userDocRef, {
-        nick: cleanNick,
-        password: password,
-        createdAt: serverTimestamp(),
-      });
-      const timeoutSet = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SET')), 8000));
-      await Promise.race([setPromise, timeoutSet]);
-    } catch (e) {
-      console.error('Błąd zapisu Firestore (konto nie zostało trwale zapisane):', e);
-      throw new Error('Problem z siecią lub serwerem. Zapis konta nie powiódł się, spróbuj ponownie.');
-    }
-
-    // 3. Opcjonalna próba utworzenia w Firebase Auth z timeoutem
-    try {
-      const authPromise = createUserWithEmailAndPassword(auth, pseudoEmail, password);
-      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 5000));
-      const userCredential = await Promise.race([authPromise, timeoutAuth]);
+      const userCredential = await createUserWithEmailAndPassword(auth, pseudoEmail, password);
       await updateProfile(userCredential.user, { displayName: cleanNick }).catch(() => {});
       
       const userObj = {
@@ -122,16 +91,37 @@ export function AuthProvider({ children }) {
         nick: cleanNick,
         email: pseudoEmail,
       };
+      
+      // 2. Fire-and-forget zapisu do Firestore (działa w tle, aktualizuje lokalny cache)
+      setDoc(doc(db, 'users', cleanId), {
+        nick: cleanNick,
+        password: password,
+        createdAt: serverTimestamp(),
+      }).catch(e => console.warn('Błąd zapisu w tle Firestore:', e));
+
       setCurrentUser(userObj);
       localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       return { success: true, user: userObj };
     } catch (err) {
-      // Jeśli Auth wyłączone w konsoli lub wisiało -> logowanie z konta Firestore
+      if (err.code === 'auth/email-already-in-use') {
+        throw new Error('Użytkownik o takim nicku już istnieje!');
+      }
+      console.error('Błąd Firebase Auth:', err);
+      
+      // Fallback tylko w krytycznym przypadku
       const fallbackUser = {
         uid: 'user_' + cleanId + '_' + Date.now(),
         nick: cleanNick,
         isFallback: true,
       };
+      
+      // Fire-and-forget do bazy w ramach fallbacku
+      setDoc(doc(db, 'users', cleanId), {
+        nick: cleanNick,
+        password: password,
+        createdAt: serverTimestamp(),
+      }).catch(() => {});
+
       setCurrentUser(fallbackUser);
       localStorage.setItem('padok_current_user', JSON.stringify(fallbackUser));
       return { success: true, user: fallbackUser };
@@ -143,11 +133,31 @@ export function AuthProvider({ children }) {
     const cleanId = cleanNick.toLowerCase();
     const pseudoEmail = `${cleanId}@padok.app`;
 
-    // 1. Najpierw sprawdzamy w Firestore z timeoutem (błyskawiczne logowanie po nicku i haśle)
+    // 1. Najpierw Firebase Auth (HTTP, bardziej niezawodne przy problemach z websocketami Firestore)
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, pseudoEmail, password);
+      const loggedNick = userCredential.user.displayName || cleanNick;
+      const userObj = {
+        uid: userCredential.user.uid,
+        nick: loggedNick,
+        email: pseudoEmail,
+      };
+      setCurrentUser(userObj);
+      localStorage.setItem('padok_current_user', JSON.stringify(userObj));
+      return { success: true, user: userObj };
+    } catch (err) {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        // Jeśli Auth jasno mówi, że zły e-mail/hasło, to nie sprawdzamy dalej w Firestore
+        throw new Error('Nieprawidłowy nick lub hasło!');
+      }
+      console.warn('Logowanie Auth się nie powiodło (offline/błąd), fallback do Firestore:', err);
+    }
+
+    // 2. Jeśli Auth padło (sieć zablokowana) próbujemy odczytać z lokalnego cache / Firestore
     const userDocRef = doc(db, 'users', cleanId);
     try {
       const getPromise = getDoc(userDocRef);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2000));
       const docSnap = await Promise.race([getPromise, timeoutPromise]);
       if (docSnap && docSnap.exists()) {
         const data = docSnap.data();
@@ -163,28 +173,12 @@ export function AuthProvider({ children }) {
         } else {
           throw new Error('Nieprawidłowe hasło!');
         }
+      } else {
+        throw new Error('Konto nie istnieje!');
       }
     } catch (e) {
-      if (e.message === 'Nieprawidłowe hasło!') throw e;
-      console.warn('Firestore login check error/timeout:', e);
-    }
-
-    // 2. Próba logowania w Firebase Auth jeśli istnieje konto cloud
-    try {
-      const authPromise = signInWithEmailAndPassword(auth, pseudoEmail, password);
-      const timeoutAuth = new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 8000));
-      const userCredential = await Promise.race([authPromise, timeoutAuth]);
-      const loggedNick = userCredential.user.displayName || cleanNick;
-      const userObj = {
-        uid: userCredential.user.uid,
-        nick: loggedNick,
-        email: pseudoEmail,
-      };
-      setCurrentUser(userObj);
-      localStorage.setItem('padok_current_user', JSON.stringify(userObj));
-      return { success: true, user: userObj };
-    } catch (err) {
-      throw new Error('Nieprawidłowy nick lub hasło! (bądź serwer wolniej odpowiada, spróbuj ponownie)');
+      if (e.message === 'Nieprawidłowe hasło!' || e.message === 'Konto nie istnieje!') throw e;
+      throw new Error('Nie udało się zalogować. Sprawdź połączenie.');
     }
   };
 
