@@ -77,16 +77,19 @@ export function AuthProvider({ children }) {
       // Jeśli nie ma w cache, odpytujemy serwer przy użyciu standardowego SDK.
       // Usunięto sztuczny timeout (1.5s), ponieważ inicjalizacja połączenia Firebase 
       // przy pierwszym zapytaniu może trwać 2-3 sekundy na wolniejszych łączach.
+      // Dajemy Firebase max 1.5 sekundy. Jeśli w tym czasie nie odpowie
+      // (np. z powodu blokady WebSocketów), przerywamy czekanie, żeby użytkownik
+      // nie musiał patrzeć na kółko przez 10 sekund.
       const getPromise = getDoc(userDocRef);
-      // Dajemy Firebase tyle czasu, ile potrzebuje (max kilkanaście sekund domyślnie w SDK)
-      const docSnap = await getPromise;
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 1500));
+      
+      const docSnap = await Promise.race([getPromise, timeoutPromise]);
       
       return !docSnap.exists(); // Jeśli dokument nie istnieje, to nick jest wolny (true)
     } catch (e) {
-      console.error('Błąd getDoc przy sprawdzaniu nicku (np. offline):', e);
-      // UWAGA: Skoro sprawdziliśmy już cache i tam go nie było, a teraz serwer jest odcięty 
-      // (np. blokada WebSocketów), optymistycznie zakładamy, że nick jest wolny.
-      // Ewentualny konflikt i tak zostanie zablokowany podczas rejestracji w Firebase Auth.
+      console.error('Błąd/Timeout przy sprawdzaniu nicku:', e);
+      // UWAGA: Skoro sprawdziliśmy już cache i tam go nie było, a teraz serwer milczy
+      // optymistycznie zakładamy, że nick jest wolny.
       return true; 
     }
   };
