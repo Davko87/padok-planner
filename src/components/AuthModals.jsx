@@ -9,6 +9,15 @@ export function LoginModal({ isOpen, onClose, onSwitchToRegister }) {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setNick('');
+      setPassword('');
+      setError('');
+      setShowPassword(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -186,6 +195,18 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
       clearTimeout(timer);
     };
   }, [nick, checkNickAvailable]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setNick('');
+      setPassword('');
+      setConfirmPassword('');
+      setError('');
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      setIsNickAvailable(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
