@@ -210,7 +210,8 @@ function HomePage() {
             w: 250,
             h: 180,
             bbox: `${lng-0.003},${lat-0.002},${lng+0.003},${lat+0.002}`,
-            isCustomAddress: true
+            isCustomAddress: true,
+            isGlobeClick: true
           };
           triggerCinematicZoomToTrack(customEarthSpot);
         });
@@ -283,10 +284,17 @@ function HomePage() {
       
       const map = L.map(paddockMapContainerRef.current, {
         center: [lat, lng],
-        zoom: selectedTrack.isCustomAddress ? 18 : 17,
+        zoom: selectedTrack.isGlobeClick ? 14 : (selectedTrack.isCustomAddress ? 18 : 17),
         zoomControl: false,
         attributionControl: false,
       });
+
+      // Zabezpieczenie rozmiaru kontenera, żeby uniknąć szarego ekranu po wylądowaniu
+      setTimeout(() => {
+        if (paddockMapInstanceRef.current) {
+          paddockMapInstanceRef.current.invalidateSize();
+        }
+      }, 200);
 
       paddockMapInstanceRef.current = map;
 
