@@ -77,7 +77,8 @@ export function AuthProvider({ children }) {
       // Jeśli nie ma w cache, wykonujemy szybkie i niezawodne zapytanie HTTP REST.
       // Całkowicie omija to problem zawieszających się WebSocketów w SDK Firestore!
       const projectId = app.options.projectId;
-      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${cleanNick}`;
+      const apiKey = app.options.apiKey;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${cleanNick}?key=${apiKey}`;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1500);
