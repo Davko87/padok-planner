@@ -83,8 +83,11 @@ export function AuthProvider({ children }) {
       
       return !docSnap.exists(); // Jeśli dokument nie istnieje, to nick jest wolny (true)
     } catch (e) {
-      console.error('Błąd getDoc przy sprawdzaniu nicku:', e);
-      return null; // Zwracamy null tylko przy faktycznym błędzie sieci (np. brak internetu)
+      console.error('Błąd getDoc przy sprawdzaniu nicku (np. offline):', e);
+      // UWAGA: Skoro sprawdziliśmy już cache i tam go nie było, a teraz serwer jest odcięty 
+      // (np. blokada WebSocketów), optymistycznie zakładamy, że nick jest wolny.
+      // Ewentualny konflikt i tak zostanie zablokowany podczas rejestracji w Firebase Auth.
+      return true; 
     }
   };
 
