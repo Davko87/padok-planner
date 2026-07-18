@@ -65,14 +65,23 @@ export function AuthProvider({ children }) {
   const checkNickAvailable = async (nick) => {
     if (!nick || nick.trim().length < 3) return null;
     const cleanNick = nick.trim().toLowerCase();
+    const userDocRef = doc(db, 'users', cleanNick);
+
     try {
-      const getPromise = getDoc(doc(db, 'users', cleanNick));
-      // Szybki timeout - jeśli baza wisi, zakładamy wolny
+      // Najpierw sprawdzamy lokalny cache - jeśli jest w cache, to na 100% zajęty
+      const cachedSnap = await getDoc(userDocRef, { source: 'cache' }).catch(() => null);
+      if (cachedSnap && cachedSnap.exists()) {
+        return false; // Zajęty
+      }
+
+      // Jeśli nie ma w cache, pytamy serwer z timeoutem
+      const getPromise = getDoc(userDocRef);
+      // Szybki timeout - jeśli baza wisi, zwracamy null (nie wiemy)
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
       const docSnap = await Promise.race([getPromise, timeoutPromise]);
       return !docSnap.exists();
     } catch (e) {
-      return true; // W razie problemów z siecią przepuszczamy dalej (zabezpieczenie jest w rejestracji Auth)
+      return null; // W razie problemów z siecią zwracamy null, żeby nie kłamać że wolny. (zabezpieczenie główne jest w rejestracji Auth)
     }
   };
 
