@@ -177,6 +177,7 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
   useEffect(() => {
     if (!nick || nick.trim().length < 3) {
       setIsNickAvailable(null);
+      setIsCheckingNick(false);
       return;
     }
     let isCancelled = false;

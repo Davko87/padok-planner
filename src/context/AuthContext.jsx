@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocFromCache, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -69,7 +69,7 @@ export function AuthProvider({ children }) {
 
     try {
       // Najpierw sprawdzamy lokalny cache - jeśli jest w cache, to na 100% zajęty
-      const cachedSnap = await getDoc(userDocRef, { source: 'cache' }).catch(() => null);
+      const cachedSnap = await getDocFromCache(userDocRef).catch(() => null);
       if (cachedSnap && cachedSnap.exists()) {
         return false; // Zajęty
       }
