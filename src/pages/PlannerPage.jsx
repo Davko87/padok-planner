@@ -393,6 +393,8 @@ function PlannerPage() {
         return t;
       })
     );
+  };
+
   const handleExportJPG = async () => {
     if (!canvasRef.current || isExporting) return;
     setIsExporting(true);
