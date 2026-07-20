@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Transformer } from 'react-konva';
 import useImage from 'use-image';
 import DPadControls from './DPadControls.jsx';
 import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 
-const PaddockCanvas = forwardRef(function PaddockCanvas({
+function PaddockCanvas({
   eventData,
   placedTeams = [],
   onUpdateTeams,
@@ -17,7 +17,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   getViewportCenterRef,
   onScaleReport,
   onRequestDuplicateConfirm,
-}, ref) {
+}) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const trRef = useRef(null);
@@ -26,52 +26,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
-
-  // EKSPORT: udostępnij metodę exportAsImage() dla rodzica (PlannerPage)
-  useImperativeHandle(ref, () => ({
-    exportAsImage: () => {
-      const stage = stageRef.current;
-      if (!stage) return null;
-
-      // Zapamiętaj aktualny stan kamery i zaznaczenia
-      const oldScale = stage.scale();
-      const oldPos = stage.position();
-      const oldWidth = stage.width();
-      const oldHeight = stage.height();
-
-      // Ukryj Transformer (zaznaczenie) na czas eksportu
-      if (trRef.current) {
-        trRef.current.nodes([]);
-        trRef.current.getLayer()?.batchDraw();
-      }
-
-      // Ustaw scenę tak, by obejmowała cały obraz tła w skali 1:1
-      const exportW = bgImage ? bgImage.width : 1024;
-      const exportH = bgImage ? bgImage.height : 1024;
-      stage.scale({ x: 1, y: 1 });
-      stage.position({ x: 0, y: 0 });
-      stage.width(exportW);
-      stage.height(exportH);
-      stage.batchDraw();
-
-      // Renderuj do dataURL (PNG w wysokiej jakości)
-      const dataUrl = stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
-
-      // Przywróć oryginalny stan kamery
-      stage.scale(oldScale);
-      stage.position(oldPos);
-      stage.width(oldWidth);
-      stage.height(oldHeight);
-
-      // Przywróć Transformer
-      if (selectedTeamId && trRef.current && selectedNodeRefs.current[selectedTeamId]) {
-        trRef.current.nodes([selectedNodeRefs.current[selectedTeamId]]);
-      }
-      stage.batchDraw();
-
-      return dataUrl;
-    },
-  }), [bgImage, selectedTeamId]);
 
   // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
   useEffect(() => {
@@ -118,13 +72,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
   const [useAnonymous, setUseAnonymous] = useState(true);
 
-  // Aktualizuj URL obrazu po zmianie eventData z automatycznym przepuszczeniem przez bezpieczny CORS proxy (weserv.nl) dla Esri
+  // Aktualizuj URL obrazu po zmianie eventData
   useEffect(() => {
-    let url = eventData?.imageUrl || defaultFallbackUrl;
-    if (url && url.includes('arcgisonline.com') && !url.includes('weserv.nl')) {
-      url = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
-    }
-    setCurrentImageUrl(url);
+    setCurrentImageUrl(eventData?.imageUrl || defaultFallbackUrl);
     setUseAnonymous(true);
   }, [eventData?.imageUrl, defaultFallbackUrl]);
 
@@ -852,6 +802,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       )}
     </div>
   );
-});
+}
 
 export default PaddockCanvas;

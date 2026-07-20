@@ -23,7 +23,6 @@ function PlannerPage() {
   const [enableMagnet, setEnableMagnet] = useState(true);
   const [scalePx, setScalePx] = useState(0);
   const getViewportCenterRef = useRef(null);
-  const canvasRef = useRef(null);
 
   // Stan weryfikacji powielenia (duplikatu) zespołu na padoku przed dodaniem
   const [pendingDuplicateNode, setPendingDuplicateNode] = useState(null);
@@ -398,7 +397,6 @@ function PlannerPage() {
     <div className="relative h-full w-full flex items-center justify-center overflow-hidden bg-slate-950">
       {/* Centralna Scena PaddockCanvas (Zadania 5 i 6) */}
       <PaddockCanvas
-        ref={canvasRef}
         eventData={eventData}
         placedTeams={placedTeams}
         onUpdateTeams={setPlacedTeams}
@@ -520,78 +518,6 @@ function PlannerPage() {
                 <span className="text-red-300">Błąd zapisu</span>
               </>
             )}
-          </div>
-
-          {/* EKSPORT: Przyciski pobierania JPG i PDF */}
-          <div className="flex flex-col gap-2 pt-3 border-t border-white/15">
-            <button
-              onClick={() => {
-                if (!canvasRef.current) return;
-                const dataUrl = canvasRef.current.exportAsImage();
-                if (!dataUrl) return;
-                const link = document.createElement('a');
-                link.download = `padok_${eventData?.name || eventId}.jpg`;
-                // Konwersja PNG -> JPG przez canvas
-                const img = new window.Image();
-                img.onload = () => {
-                  const c = document.createElement('canvas');
-                  c.width = img.width;
-                  c.height = img.height;
-                  const ctx = c.getContext('2d');
-                  ctx.fillStyle = '#0f172a';
-                  ctx.fillRect(0, 0, c.width, c.height);
-                  ctx.drawImage(img, 0, 0);
-                  link.href = c.toDataURL('image/jpeg', 0.92);
-                  link.click();
-                };
-                img.src = dataUrl;
-              }}
-              className="w-full py-2 px-3 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 text-xs flex items-center justify-center gap-1.5 transition-all shadow active:scale-95"
-              title="Pobierz zdjęcie całego padoku jako JPG"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" />
-                <path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
-              </svg>
-              <span>📸 Pobierz JPG</span>
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!canvasRef.current) return;
-                const dataUrl = canvasRef.current.exportAsImage();
-                if (!dataUrl) return;
-                const { jsPDF } = await import('jspdf');
-                const img = new window.Image();
-                img.onload = () => {
-                  const imgW = img.width;
-                  const imgH = img.height;
-                  const orientation = imgW > imgH ? 'landscape' : 'portrait';
-                  const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
-                  const pageW = pdf.internal.pageSize.getWidth();
-                  const pageH = pdf.internal.pageSize.getHeight();
-                  const margin = 8;
-                  const maxW = pageW - margin * 2;
-                  const maxH = pageH - margin * 2;
-                  const scale = Math.min(maxW / imgW, maxH / imgH);
-                  const drawW = imgW * scale;
-                  const drawH = imgH * scale;
-                  const offsetX = (pageW - drawW) / 2;
-                  const offsetY = (pageH - drawH) / 2;
-                  pdf.addImage(dataUrl, 'PNG', offsetX, offsetY, drawW, drawH);
-                  pdf.save(`padok_${eventData?.name || eventId}.pdf`);
-                };
-                img.src = dataUrl;
-              }}
-              className="w-full py-2 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs flex items-center justify-center gap-1.5 transition-all shadow active:scale-95"
-              title="Pobierz profesjonalny dokument PDF z widokiem padoku"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" />
-                <path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
-              </svg>
-              <span>📄 Pobierz PDF</span>
-            </button>
           </div>
         </div>
       </header>
