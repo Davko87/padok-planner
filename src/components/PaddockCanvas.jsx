@@ -27,6 +27,75 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
 
+  // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
+  useEffect(() => {
+    if (getViewportCenterRef) {
+      getViewportCenterRef.current = () => {
+        const stage = stageRef.current;
+        if (!stage) return null;
+        const screenCenter = { x: stage.width() / 2, y: stage.height() / 2 };
+        const transform = stage.getAbsoluteTransform().copy();
+        transform.invert();
+        return transform.point(screenCenter);
+      };
+    }
+  });
+
+  // Zapisuj ostatnie prawidłowe (bezkolizyjne) współrzędne dla naczep
+  useEffect(() => {
+    placedTeams.forEach((t) => {
+      if (!lastValidCoordsRef.current[t.id]) {
+        lastValidCoordsRef.current[t.id] = { x: t.x, y: t.y, rotation: t.rotation || 0 };
+      }
+    });
+  }, [placedTeams]);
+
+  // Automatyczne ukrywanie komunikatu o kolizji
+  useEffect(() => {
+    if (collisionToast) {
+      const timer = setTimeout(() => setCollisionToast(''), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [collisionToast]);
+
+  // Wymiary okna canvasu
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+
+  // Kamera stage (pozycja i zoom)
+  const [stageScale, setStageScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [isPanMode, setIsPanMode] = useState(false);
+
+  // Załaduj obraz satelitarny w tle z obsługą automatycznego ponawiania i fallbacks (bez blokady CORS)
+  const defaultFallbackUrl = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/16.7962,52.4185,17,0,0/1024x1024?access_token=' + (import.meta.env.VITE_MAPBOX_TOKEN || '');
+  
+  const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
+  const [useAnonymous, setUseAnonymous] = useState(true);
+
+  // Aktualizuj URL obrazu po zmianie eventData
+  useEffect(() => {
+    setCurrentImageUrl(eventData?.imageUrl || defaultFallbackUrl);
+    setUseAnonymous(true);
+  }, [eventData?.imageUrl, defaultFallbackUrl]);
+
+  const [bgImage, bgStatus] = useImage(currentImageUrl, useAnonymous ? 'anonymous' : undefined);
+
+  // W razie blokady CORS na serwerze Esri/ArcGIS (bgStatus === 'failed') natychmiast załaduj bez wymogu CORS lub w bezpiecznej rozdzielczości!
+  useEffect(() => {
+    if (bgStatus === 'failed') {
+      if (useAnonymous) {
+        console.warn('Serwer obrazów zablokował CORS (anonymous). Ponawianie bez wymogu CORS...');
+        setUseAnonymous(false);
+      } else if (currentImageUrl.includes('size=2048,2048')) {
+        console.warn('Serwer Esri odrzucił rozmiar 2048x2048. Ponawianie w rozdzielczości 1280x1280...');
+        setCurrentImageUrl(currentImageUrl.replace('size=2048,2048', 'size=1280,1280'));
+      } else if (currentImageUrl !== defaultFallbackUrl) {
+        console.warn('Pobieranie obrazu Esri nie powiodło się. Przełączanie na warstwę rezerwową...');
+        setCurrentImageUrl(defaultFallbackUrl);
+      }
+    }
+  }, [bgStatus, useAnonymous, currentImageUrl, defaultFallbackUrl]);
+
   // EKSPORT: udostępnij metodę exportAsImage() z bezpieczną obsługą tainted canvas w razie blokad CORS na serwerach Esri
   useImperativeHandle(ref, () => ({
     exportAsImage: async () => {
@@ -108,75 +177,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       return finalDataUrl;
     },
   }), [bgImage, selectedTeamId, currentImageUrl]);
-
-  // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
-  useEffect(() => {
-    if (getViewportCenterRef) {
-      getViewportCenterRef.current = () => {
-        const stage = stageRef.current;
-        if (!stage) return null;
-        const screenCenter = { x: stage.width() / 2, y: stage.height() / 2 };
-        const transform = stage.getAbsoluteTransform().copy();
-        transform.invert();
-        return transform.point(screenCenter);
-      };
-    }
-  });
-
-  // Zapisuj ostatnie prawidłowe (bezkolizyjne) współrzędne dla naczep
-  useEffect(() => {
-    placedTeams.forEach((t) => {
-      if (!lastValidCoordsRef.current[t.id]) {
-        lastValidCoordsRef.current[t.id] = { x: t.x, y: t.y, rotation: t.rotation || 0 };
-      }
-    });
-  }, [placedTeams]);
-
-  // Automatyczne ukrywanie komunikatu o kolizji
-  useEffect(() => {
-    if (collisionToast) {
-      const timer = setTimeout(() => setCollisionToast(''), 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [collisionToast]);
-
-  // Wymiary okna canvasu
-  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
-
-  // Kamera stage (pozycja i zoom)
-  const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
-  const [isPanMode, setIsPanMode] = useState(false);
-
-  // Załaduj obraz satelitarny w tle z obsługą automatycznego ponawiania i fallbacks (bez blokady CORS)
-  const defaultFallbackUrl = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/16.7962,52.4185,17,0,0/1024x1024?access_token=' + (import.meta.env.VITE_MAPBOX_TOKEN || '');
-  
-  const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
-  const [useAnonymous, setUseAnonymous] = useState(true);
-
-  // Aktualizuj URL obrazu po zmianie eventData
-  useEffect(() => {
-    setCurrentImageUrl(eventData?.imageUrl || defaultFallbackUrl);
-    setUseAnonymous(true);
-  }, [eventData?.imageUrl, defaultFallbackUrl]);
-
-  const [bgImage, bgStatus] = useImage(currentImageUrl, useAnonymous ? 'anonymous' : undefined);
-
-  // W razie blokady CORS na serwerze Esri/ArcGIS (bgStatus === 'failed') natychmiast załaduj bez wymogu CORS lub w bezpiecznej rozdzielczości!
-  useEffect(() => {
-    if (bgStatus === 'failed') {
-      if (useAnonymous) {
-        console.warn('Serwer obrazów zablokował CORS (anonymous). Ponawianie bez wymogu CORS...');
-        setUseAnonymous(false);
-      } else if (currentImageUrl.includes('size=2048,2048')) {
-        console.warn('Serwer Esri odrzucił rozmiar 2048x2048. Ponawianie w rozdzielczości 1280x1280...');
-        setCurrentImageUrl(currentImageUrl.replace('size=2048,2048', 'size=1280,1280'));
-      } else if (currentImageUrl !== defaultFallbackUrl) {
-        console.warn('Pobieranie obrazu Esri nie powiodło się. Przełączanie na warstwę rezerwową...');
-        setCurrentImageUrl(defaultFallbackUrl);
-      }
-    }
-  }, [bgStatus, useAnonymous, currentImageUrl, defaultFallbackUrl]);
 
   // Oblicz pixelsPerMeter tak, aby szerokość obrazu w pikselach odpowiadała fizycznej szerokości w metrach z Firestore
   const imgWidth = bgImage ? bgImage.width : 1024;
