@@ -4,7 +4,6 @@ import { doc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/fi
 import { db } from '../lib/firebase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
-import { jsPDF } from 'jspdf';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
 import DuplicateTeamModal from '../components/DuplicateTeamModal.jsx';
@@ -558,10 +557,11 @@ function PlannerPage() {
             </button>
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!canvasRef.current) return;
                 const dataUrl = canvasRef.current.exportAsImage();
                 if (!dataUrl) return;
+                const { jsPDF } = await import('jspdf');
                 const img = new window.Image();
                 img.onload = () => {
                   const imgW = img.width;

@@ -16,6 +16,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   onToggleMagnet,
   getViewportCenterRef,
   onScaleReport,
+  onRequestDuplicateConfirm,
 }, ref) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
