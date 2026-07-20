@@ -568,8 +568,8 @@ function HomePage() {
       const dimensions = calculateBoundsDimensionsMeters(confirmedBounds);
       const bboxStr = `${confirmedBounds.sw[0]},${confirmedBounds.sw[1]},${confirmedBounds.ne[0]},${confirmedBounds.ne[1]}`;
       
-      // Rozdzielczość Ultra HD 2048x2048 (4-krotnie wyższa rozdzielczość w celu wyeliminowania pikselozy na płótnie!)
-      const esriStaticUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
+      const rawEsriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bboxStr}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
+      const esriStaticUrl = `https://images.weserv.nl/?url=${encodeURIComponent(rawEsriUrl)}`;
 
       const eventData = {
         name: customEventName.trim() || 'Własny Padok na Ziemi',

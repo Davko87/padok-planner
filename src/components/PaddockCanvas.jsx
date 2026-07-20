@@ -118,13 +118,15 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
   const [useAnonymous, setUseAnonymous] = useState(true);
 
-  // Aktualizuj URL obrazu po zmianie eventData
+  // Aktualizuj URL obrazu po zmianie eventData z automatycznym przepuszczeniem przez bezpieczny CORS proxy (weserv.nl) dla Esri
   useEffect(() => {
-    if (eventData?.imageUrl) {
-      setCurrentImageUrl(eventData.imageUrl);
-      setUseAnonymous(true);
+    let url = eventData?.imageUrl || defaultFallbackUrl;
+    if (url && url.includes('arcgisonline.com') && !url.includes('weserv.nl')) {
+      url = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
     }
-  }, [eventData?.imageUrl]);
+    setCurrentImageUrl(url);
+    setUseAnonymous(true);
+  }, [eventData?.imageUrl, defaultFallbackUrl]);
 
   const [bgImage, bgStatus] = useImage(currentImageUrl, useAnonymous ? 'anonymous' : undefined);
 

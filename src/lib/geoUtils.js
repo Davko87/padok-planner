@@ -101,7 +101,8 @@ export function buildStaticMapUrl(bounds, googleApiKey, mapboxToken) {
     maxY = bounds.ne[1];
   }
 
-  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+  const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=4326&size=1024,1024&imageSR=4326&format=png&f=image`;
+  return `https://images.weserv.nl/?url=${encodeURIComponent(esriUrl)}`;
 }
 
 /**
