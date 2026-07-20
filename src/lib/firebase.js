@@ -7,12 +7,12 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAwgat3c67bYievuKO6qE_2UiZ4KkhVSDc',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'padok-planner-app.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'padok-planner-app',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'padok-planner-app.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '931636987182',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:931636987182:web:8ca9f91114e86477dfa6bf',
 };
 
 // Initialize Firebase
