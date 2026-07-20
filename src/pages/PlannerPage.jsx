@@ -23,6 +23,8 @@ function PlannerPage() {
   const [enableMagnet, setEnableMagnet] = useState(true);
   const [scalePx, setScalePx] = useState(0);
   const getViewportCenterRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Stan weryfikacji powielenia (duplikatu) zespołu na padoku przed dodaniem
   const [pendingDuplicateNode, setPendingDuplicateNode] = useState(null);
@@ -391,12 +393,91 @@ function PlannerPage() {
         return t;
       })
     );
+  const handleExportJPG = async () => {
+    if (!canvasRef.current || isExporting) return;
+    setIsExporting(true);
+    try {
+      const dataUrl = await canvasRef.current.exportAsImage();
+      if (!dataUrl) {
+        alert('Nie udało się wygenerować obrazu padoku.');
+        setIsExporting(false);
+        return;
+      }
+      const link = document.createElement('a');
+      link.download = `padok_${eventData?.name || eventId}.jpg`;
+      const img = new window.Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0);
+        link.href = c.toDataURL('image/jpeg', 0.92);
+        link.click();
+        setIsExporting(false);
+      };
+      img.onerror = () => {
+        alert('Błąd konwersji do JPG.');
+        setIsExporting(false);
+      };
+      img.src = dataUrl;
+    } catch (err) {
+      console.error('Błąd eksportu JPG:', err);
+      alert('Wystąpił błąd podczas pobierania JPG.');
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!canvasRef.current || isExporting) return;
+    setIsExporting(true);
+    try {
+      const dataUrl = await canvasRef.current.exportAsImage();
+      if (!dataUrl) {
+        alert('Nie udało się wygenerować obrazu padoku dla PDF.');
+        setIsExporting(false);
+        return;
+      }
+      const { jsPDF } = await import('jspdf');
+      const img = new window.Image();
+      img.onload = () => {
+        const imgW = img.width;
+        const imgH = img.height;
+        const orientation = imgW > imgH ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const margin = 8;
+        const maxW = pageW - margin * 2;
+        const maxH = pageH - margin * 2;
+        const scale = Math.min(maxW / imgW, maxH / imgH);
+        const drawW = imgW * scale;
+        const drawH = imgH * scale;
+        const offsetX = (pageW - drawW) / 2;
+        const offsetY = (pageH - drawH) / 2;
+        pdf.addImage(dataUrl, 'PNG', offsetX, offsetY, drawW, drawH);
+        pdf.save(`padok_${eventData?.name || eventId}.pdf`);
+        setIsExporting(false);
+      };
+      img.onerror = () => {
+        alert('Błąd generowania PDF.');
+        setIsExporting(false);
+      };
+      img.src = dataUrl;
+    } catch (err) {
+      console.error('Błąd eksportu PDF:', err);
+      alert('Wystąpił błąd podczas tworzenia pliku PDF.');
+      setIsExporting(false);
+    }
   };
 
   return (
     <div className="relative h-full w-full flex items-center justify-center overflow-hidden bg-slate-950">
       {/* Centralna Scena PaddockCanvas (Zadania 5 i 6) */}
       <PaddockCanvas
+        ref={canvasRef}
         eventData={eventData}
         placedTeams={placedTeams}
         onUpdateTeams={setPlacedTeams}
@@ -518,6 +599,27 @@ function PlannerPage() {
                 <span className="text-red-300">Błąd zapisu</span>
               </>
             )}
+          </div>
+
+          {/* EKSPORT PADOKU: Tylko na dole lewego górnego panelu szklanego */}
+          <div className="flex items-center gap-2 pt-2 border-t border-white/15">
+            <button
+              onClick={handleExportJPG}
+              disabled={isExporting}
+              className="flex-1 py-2 px-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow active:scale-95 disabled:opacity-50"
+              title="Pobierz zdjęcie padoku jako plik JPG"
+            >
+              <span>📸 JPG</span>
+            </button>
+
+            <button
+              onClick={handleExportPDF}
+              disabled={isExporting}
+              className="flex-1 py-2 px-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow active:scale-95 disabled:opacity-50"
+              title="Pobierz dokument padoku jako plik PDF"
+            >
+              <span>📄 PDF</span>
+            </button>
           </div>
         </div>
       </header>

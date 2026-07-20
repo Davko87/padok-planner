@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Transformer } from 'react-konva';
 import useImage from 'use-image';
 import DPadControls from './DPadControls.jsx';
 import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 
-function PaddockCanvas({
+const PaddockCanvas = forwardRef(function PaddockCanvas({
   eventData,
   placedTeams = [],
   onUpdateTeams,
@@ -17,7 +17,7 @@ function PaddockCanvas({
   getViewportCenterRef,
   onScaleReport,
   onRequestDuplicateConfirm,
-}) {
+}, ref) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const trRef = useRef(null);
@@ -26,6 +26,88 @@ function PaddockCanvas({
 
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
+
+  // EKSPORT: udostępnij metodę exportAsImage() z bezpieczną obsługą tainted canvas w razie blokad CORS na serwerach Esri
+  useImperativeHandle(ref, () => ({
+    exportAsImage: async () => {
+      const stage = stageRef.current;
+      if (!stage) return null;
+
+      const oldScale = stage.scale();
+      const oldPos = stage.position();
+      const oldWidth = stage.width();
+      const oldHeight = stage.height();
+
+      if (trRef.current) {
+        trRef.current.nodes([]);
+        trRef.current.getLayer()?.batchDraw();
+      }
+
+      const exportW = bgImage ? bgImage.width : stage.width();
+      const exportH = bgImage ? bgImage.height : stage.height();
+      stage.scale({ x: 1, y: 1 });
+      stage.position({ x: 0, y: 0 });
+      stage.width(exportW);
+      stage.height(exportH);
+      stage.batchDraw();
+
+      let finalDataUrl = null;
+
+      try {
+        // Próba bezpośredniego eksportu całej sceny (jeśli serwer obrazu pozwolił na CORS lub mamy mapę Mapbox)
+        finalDataUrl = stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+      } catch (err) {
+        // Jeśli canvas jest tainted ze względu na brak nagłówków CORS z serwera Esri:
+        // Pobieramy czystą warstwę zespołów z untainted teams-layer
+        const teamsLayer = stage.findOne('#teams-layer');
+        const teamsOnlyDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
+
+        if (!teamsOnlyDataUrl) {
+          finalDataUrl = null;
+        } else {
+          try {
+            const proxyBgUrl = `https://images.weserv.nl/?url=${encodeURIComponent(currentImageUrl)}`;
+            const proxyImg = await new Promise((resolve, reject) => {
+              const img = new window.Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => resolve(img);
+              img.onerror = () => reject(new Error('Proxy bg load failed'));
+              img.src = proxyBgUrl;
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = proxyImg.width * 2;
+            canvas.height = proxyImg.height * 2;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(proxyImg, 0, 0, canvas.width, canvas.height);
+
+            const teamsImg = await new Promise((resolve) => {
+              const tImg = new window.Image();
+              tImg.onload = () => resolve(tImg);
+              tImg.src = teamsOnlyDataUrl;
+            });
+            ctx.drawImage(teamsImg, 0, 0, canvas.width, canvas.height);
+
+            finalDataUrl = canvas.toDataURL('image/png');
+          } catch (proxyErr) {
+            finalDataUrl = teamsOnlyDataUrl;
+          }
+        }
+      }
+
+      stage.scale(oldScale);
+      stage.position(oldPos);
+      stage.width(oldWidth);
+      stage.height(oldHeight);
+
+      if (selectedTeamId && trRef.current && selectedNodeRefs.current[selectedTeamId]) {
+        trRef.current.nodes([selectedNodeRefs.current[selectedTeamId]]);
+      }
+      stage.batchDraw();
+
+      return finalDataUrl;
+    },
+  }), [bgImage, selectedTeamId, currentImageUrl]);
 
   // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
   useEffect(() => {
@@ -513,8 +595,8 @@ function PaddockCanvas({
         }}
         className="cursor-default active:cursor-grabbing"
       >
-        <Layer>
-          {/* 1. Obraz Satelitarny (Tło) */}
+        {/* Warstwa 1: Obraz Satelitarny (Tło) */}
+        <Layer id="bg-layer">
           {bgImage && (
             <KonvaImage
               name="background-image"
@@ -528,7 +610,10 @@ function PaddockCanvas({
               shadowOpacity={0.7}
             />
           )}
+        </Layer>
 
+        {/* Warstwa 2: Ramka, Siatka i Zespoły (zawsze czysta od CORS) */}
+        <Layer id="teams-layer">
           {/* Ramka granic obszaru toru */}
           {bgImage && (
             <Rect
@@ -802,6 +887,6 @@ function PaddockCanvas({
       )}
     </div>
   );
-}
+});
 
 export default PaddockCanvas;
