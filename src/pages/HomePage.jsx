@@ -50,70 +50,144 @@ function HomePage() {
   // Warstwa mapy: 'satellite-streets' (Google Hybryda z nazwami ulic) | 'satellite' (Esri HD) | 'street' (OSM)
   const [mapLayerType, setMapLayerType] = useState('satellite-streets');
 
-  // Funkcja pomocnicza do czyszczenia i elastycznego wyszukiwania adresów (z tolerancją na przecinki, numery i spacje)
+  // Funkcja pomocnicza do elastycznego wyszukiwania na żywo (Photon + Nominatim z limitem 8)
   const fetchGeocodingResults = async (queryText) => {
     const cleaned = queryText.replace(/\s+/g, ' ').trim();
-    if (cleaned.length < 3) return [];
+    if (cleaned.length < 2) return [];
 
     try {
-      // 1. Próba wyszukiwania dokładnego (z przecinkami lub bez)
-      let resp = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleaned)}&addressdetails=1&limit=5`,
-        { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
-      );
-      let data = resp.ok ? await resp.json() : [];
+      // 1. Równoległe zapytanie do Photon (Komoot / OpenStreetMap) - szybki autouzupełniacz (search-as-you-type)
+      // oraz do Nominatim (dokładny geokoder) z limitem 8
+      const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleaned)}&limit=8`;
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleaned)}&addressdetails=1&limit=8`;
 
-      // 2. Jeśli brak wyników, a zapytanie ma numer lub przecinek (np. "Lipowa 148, Poznań" -> "Lipowa, Poznań" lub "Poznań Lipowa")
-      if (data.length === 0 && (cleaned.includes(',') || /\d+/.test(cleaned))) {
-        const withoutNumbers = cleaned.replace(/\d+[a-zA-Z]?/g, '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
-        if (withoutNumbers.length >= 3 && withoutNumbers !== cleaned) {
-          resp = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(withoutNumbers)}&addressdetails=1&limit=5`,
-            { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
-          );
-          if (resp.ok) {
-            data = await resp.json();
-          }
+      const [photonRes, nominatimRes] = await Promise.allSettled([
+        fetch(photonUrl, { headers: { 'Accept-Language': 'pl,en;q=0.9' } }),
+        fetch(nominatimUrl, { headers: { 'Accept-Language': 'pl,en;q=0.9' } })
+      ]);
+
+      let photonResults = [];
+      if (photonRes.status === 'fulfilled' && photonRes.value.ok) {
+        try {
+          const data = await photonRes.value.json();
+          photonResults = (data.features || []).map((feature, idx) => {
+            const props = feature.properties || {};
+            const [lon, lat] = feature.geometry?.coordinates || [0, 0];
+
+            let mainName = props.name || '';
+            const road = props.street || '';
+            const houseNumber = props.housenumber || '';
+            if (road) {
+              const fullRoad = houseNumber ? `${road} ${houseNumber}` : road;
+              if (mainName && mainName.toLowerCase() !== fullRoad.toLowerCase()) {
+                mainName = `${mainName} (${fullRoad})`;
+              } else if (!mainName) {
+                mainName = fullRoad;
+              }
+            }
+            if (!mainName) {
+              mainName = [props.city || props.town || props.village, props.country].filter(Boolean).join(', ') || 'Punkt na mapie';
+            }
+
+            const subName = [props.city || props.town || props.village || props.county, props.state, props.country]
+              .filter(Boolean)
+              .join(', ');
+
+            let bboxStr = `${lon - 0.003},${lat - 0.002},${lon + 0.003},${lat + 0.002}`;
+            if (Array.isArray(props.extent) && props.extent.length === 4) {
+              bboxStr = props.extent.join(',');
+            }
+
+            return {
+              id: `photon-${props.osm_id || idx}-${Date.now()}`,
+              name: mainName,
+              city: subName || 'OpenStreetMap',
+              coords: [parseFloat(lon), parseFloat(lat)],
+              w: 250,
+              h: 180,
+              bbox: bboxStr,
+              isCustomAddress: true
+            };
+          });
+        } catch (e) {
+          console.warn('Błąd parsowania Photon:', e);
         }
       }
 
-      return data.map((item, idx) => {
-        const addr = item.address || {};
-        const road = addr.road || addr.pedestrian || addr.street || addr.suburb || '';
-        const houseNumber = addr.house_number || '';
-        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
-        const state = addr.state || addr.country || '';
+      let nominatimResults = [];
+      if (nominatimRes.status === 'fulfilled' && nominatimRes.value.ok) {
+        try {
+          let data = await nominatimRes.value.json();
+          // Jeśli brak wyników w Nominatim, a zapytanie ma numer lub przecinek (np. "Lipowa 148, Poznań")
+          if (data.length === 0 && (cleaned.includes(',') || /\d+/.test(cleaned))) {
+            const withoutNumbers = cleaned.replace(/\d+[a-zA-Z]?/g, '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+            if (withoutNumbers.length >= 2 && withoutNumbers !== cleaned) {
+              const fallbackResp = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(withoutNumbers)}&addressdetails=1&limit=8`,
+                { headers: { 'Accept-Language': 'pl,en;q=0.9' } }
+              );
+              if (fallbackResp.ok) {
+                data = await fallbackResp.json();
+              }
+            }
+          }
 
-        let mainName = item.display_name.split(',')[0];
-        if (road) {
-          mainName = houseNumber ? `${road} ${houseNumber}` : road;
+          nominatimResults = data.map((item, idx) => {
+            const addr = item.address || {};
+            const road = addr.road || addr.pedestrian || addr.street || addr.suburb || '';
+            const houseNumber = addr.house_number || '';
+            const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+            const state = addr.state || addr.country || '';
+
+            let mainName = item.display_name.split(',')[0];
+            if (road) {
+              mainName = houseNumber ? `${road} ${houseNumber}` : road;
+            }
+
+            let subName = [city, state].filter(Boolean).join(', ');
+            if (!subName) {
+              subName = item.display_name.split(',').slice(1, 3).join(', ').trim();
+            }
+
+            return {
+              id: `osm-${item.place_id || idx}-${Date.now()}`,
+              name: mainName,
+              city: subName,
+              coords: [parseFloat(item.lon), parseFloat(item.lat)],
+              w: 250,
+              h: 180,
+              bbox: `${parseFloat(item.lon) - 0.003},${parseFloat(item.lat) - 0.002},${parseFloat(item.lon) + 0.003},${parseFloat(item.lat) + 0.002}`,
+              isCustomAddress: true
+            };
+          });
+        } catch (e) {
+          console.warn('Błąd parsowania Nominatim:', e);
         }
+      }
 
-        let subName = [city, state].filter(Boolean).join(', ');
-        if (!subName) {
-          subName = item.display_name.split(',').slice(1, 3).join(', ').trim();
+      // Połączenie wyników i deduplikacja bliskich współrzędnych
+      const combined = [...photonResults, ...nominatimResults];
+      const uniqueResults = [];
+      for (const item of combined) {
+        const isDuplicate = uniqueResults.some(u => 
+          Math.abs(u.coords[0] - item.coords[0]) < 0.0008 && 
+          Math.abs(u.coords[1] - item.coords[1]) < 0.0008
+        );
+        if (!isDuplicate && (item.coords[0] !== 0 || item.coords[1] !== 0)) {
+          uniqueResults.push(item);
         }
+      }
 
-        return {
-          id: `osm-${item.place_id || idx}-${Date.now()}`,
-          name: mainName,
-          city: subName,
-          coords: [parseFloat(item.lon), parseFloat(item.lat)],
-          w: 250,
-          h: 180,
-          bbox: `${parseFloat(item.lon)-0.003},${parseFloat(item.lat)-0.002},${parseFloat(item.lon)+0.003},${parseFloat(item.lat)+0.002}`,
-          isCustomAddress: true
-        };
-      });
+      return uniqueResults.slice(0, 8);
     } catch (err) {
-      console.warn('Błąd geokodowania Nominatim:', err);
+      console.warn('Błąd geokodowania:', err);
       return [];
     }
   };
 
   // Wyszukiwanie w czasie rzeczywistym z debounce
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 3) {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setSearchResults([]);
       return;
     }
@@ -123,7 +197,7 @@ function HomePage() {
       const results = await fetchGeocodingResults(searchQuery);
       setSearchResults(results);
       setIsSearchingOnline(false);
-    }, 450);
+    }, 320);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -760,19 +834,24 @@ function HomePage() {
             </button>
           </div>
 
-          {/* Lista sugestii / Wyników wyszukiwania (wyświetlana TYLKO po wpisaniu min. 3 liter) */}
-          {showDropdown && searchResults.length > 0 && (
+          {/* Lista sugestii / Wyników wyszukiwania (wyświetlana od 2 liter) */}
+          {showDropdown && (searchResults.length > 0 || (isSearchingOnline && searchQuery.trim().length >= 2)) && (
             <div className="mt-3 max-h-[38vh] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
-              <div className="text-[10px] font-bold text-white/60 tracking-wider uppercase px-1 py-0.5 flex justify-between">
-                <span>Wyniki na kuli ziemskiej:</span>
-                {isSearchingOnline && <span className="text-indigo-400 animate-pulse">Szukanie w świecie...</span>}
+              <div className="text-[10px] font-bold text-white/60 tracking-wider uppercase px-1 py-0.5 flex justify-between items-center">
+                <span>Wyniki (max 8) na kuli ziemskiej:</span>
+                {isSearchingOnline && (
+                  <span className="text-indigo-400 animate-pulse flex items-center gap-1.5 font-normal">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping inline-block" />
+                    Szukanie podpowiedzi...
+                  </span>
+                )}
               </div>
 
               {searchResults.map((track) => (
                 <button
                   key={track.id}
                   onClick={() => triggerCinematicZoomToTrack(track)}
-                  className="w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25"
+                  className="w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25 shadow-sm"
                 >
                   <div className="min-w-0 pr-2">
                     <p className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors truncate">
@@ -787,6 +866,12 @@ function HomePage() {
                   </div>
                 </button>
               ))}
+
+              {!isSearchingOnline && searchResults.length === 0 && searchQuery.trim().length >= 2 && (
+                <div className="p-3 text-center text-xs text-white/50 font-medium">
+                  Nie znaleziono takiego miejsca na Ziemi. Spróbuj innej nazwy.
+                </div>
+              )}
             </div>
           )}
         </div>
