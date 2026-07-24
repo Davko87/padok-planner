@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Transformer } from 'react-konva';
-import useImage from 'use-image';
+import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
+import { Map3D } from '@vis.gl/react-google-maps';
 import DPadControls from './DPadControls.jsx';
 import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 
@@ -27,7 +27,12 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
 
-  // Udostępnij metodę do pobierania środka aktualnego widoku (kamery)
+  // Stan obrotu mapy i kamery
+  const [mapHeading, setMapHeading] = useState(0);
+  const [showCameraControls, setShowCameraControls] = useState(false);
+  const [isBottomControlsCollapsed, setIsBottomControlsCollapsed] = useState(false);
+
+  // Dodajemy debouncing na resize (żeby nie psuć wydajności przy szybkim skoku okna)mery)
   useEffect(() => {
     if (getViewportCenterRef) {
       getViewportCenterRef.current = () => {
@@ -66,35 +71,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanMode, setIsPanMode] = useState(false);
 
-  // Załaduj obraz satelitarny w tle z obsługą automatycznego ponawiania i fallbacks (bez blokady CORS)
-  const defaultFallbackUrl = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/16.7962,52.4185,17,0,0/1024x1024?access_token=' + (import.meta.env.VITE_MAPBOX_TOKEN || '');
-  
-  const [currentImageUrl, setCurrentImageUrl] = useState(eventData?.imageUrl || defaultFallbackUrl);
-  const [useAnonymous, setUseAnonymous] = useState(true);
-
-  // Aktualizuj URL obrazu po zmianie eventData
-  useEffect(() => {
-    setCurrentImageUrl(eventData?.imageUrl || defaultFallbackUrl);
-    setUseAnonymous(true);
-  }, [eventData?.imageUrl, defaultFallbackUrl]);
-
-  const [bgImage, bgStatus] = useImage(currentImageUrl, useAnonymous ? 'anonymous' : undefined);
-
-  // W razie blokady CORS na serwerze Esri/ArcGIS (bgStatus === 'failed') natychmiast załaduj bez wymogu CORS lub w bezpiecznej rozdzielczości!
-  useEffect(() => {
-    if (bgStatus === 'failed') {
-      if (useAnonymous) {
-        console.warn('Serwer obrazów zablokował CORS (anonymous). Ponawianie bez wymogu CORS...');
-        setUseAnonymous(false);
-      } else if (currentImageUrl.includes('size=2048,2048')) {
-        console.warn('Serwer Esri odrzucił rozmiar 2048x2048. Ponawianie w rozdzielczości 1280x1280...');
-        setCurrentImageUrl(currentImageUrl.replace('size=2048,2048', 'size=1280,1280'));
-      } else if (currentImageUrl !== defaultFallbackUrl) {
-        console.warn('Pobieranie obrazu Esri nie powiodło się. Przełączanie na warstwę rezerwową...');
-        setCurrentImageUrl(defaultFallbackUrl);
-      }
-    }
-  }, [bgStatus, useAnonymous, currentImageUrl, defaultFallbackUrl]);
+  // Google Maps używane jako tło interaktywne
 
   // EKSPORT: udostępnij metodę exportAsImage() z bezpieczną obsługą tainted canvas w razie blokad CORS na serwerach Esri
   useImperativeHandle(ref, () => ({
@@ -112,8 +89,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         trRef.current.getLayer()?.batchDraw();
       }
 
-      const exportW = bgImage ? bgImage.width : stage.width();
-      const exportH = bgImage ? bgImage.height : stage.height();
+      const exportW = 1024;
+      const exportH = 1024;
       stage.scale({ x: 1, y: 1 });
       stage.position({ x: 0, y: 0 });
       stage.width(exportW);
@@ -123,45 +100,11 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       let finalDataUrl = null;
 
       try {
-        // Próba bezpośredniego eksportu całej sceny (jeśli serwer obrazu pozwolił na CORS lub mamy mapę Mapbox)
-        finalDataUrl = stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
-      } catch (err) {
-        // Jeśli canvas jest tainted ze względu na brak nagłówków CORS z serwera Esri:
-        // Pobieramy czystą warstwę zespołów z untainted teams-layer
+        // Z Google Maps w tle (WebGL), toDataURL canvasa i tak wyeksportuje tylko zespoły (tło jest html-em pod canvasem)
         const teamsLayer = stage.findOne('#teams-layer');
-        const teamsOnlyDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
-
-        if (!teamsOnlyDataUrl) {
-          finalDataUrl = null;
-        } else {
-          try {
-            const proxyBgUrl = `https://images.weserv.nl/?url=${encodeURIComponent(currentImageUrl)}`;
-            const proxyImg = await new Promise((resolve, reject) => {
-              const img = new window.Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = () => resolve(img);
-              img.onerror = () => reject(new Error('Proxy bg load failed'));
-              img.src = proxyBgUrl;
-            });
-
-            const canvas = document.createElement('canvas');
-            canvas.width = proxyImg.width * 2;
-            canvas.height = proxyImg.height * 2;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(proxyImg, 0, 0, canvas.width, canvas.height);
-
-            const teamsImg = await new Promise((resolve) => {
-              const tImg = new window.Image();
-              tImg.onload = () => resolve(tImg);
-              tImg.src = teamsOnlyDataUrl;
-            });
-            ctx.drawImage(teamsImg, 0, 0, canvas.width, canvas.height);
-
-            finalDataUrl = canvas.toDataURL('image/png');
-          } catch (proxyErr) {
-            finalDataUrl = teamsOnlyDataUrl;
-          }
-        }
+        finalDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
+      } catch (err) {
+        finalDataUrl = null;
       }
 
       stage.scale(oldScale);
@@ -176,11 +119,11 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
       return finalDataUrl;
     },
-  }), [bgImage, selectedTeamId, currentImageUrl]);
+  }), [selectedTeamId]);
 
   // Oblicz pixelsPerMeter tak, aby szerokość obrazu w pikselach odpowiadała fizycznej szerokości w metrach z Firestore
-  const imgWidth = bgImage ? bgImage.width : 1024;
-  const imgHeight = bgImage ? bgImage.height : 1024;
+  const imgWidth = 1024;
+  const imgHeight = 1024;
   const physicalWidthMeters = eventData?.widthMeters || 250;
   const pixelsPerMeter = imgWidth / physicalWidthMeters;
 
@@ -209,21 +152,21 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // Wyśrodkuj mapę po pierwszym załadowaniu obrazu
   useEffect(() => {
-    if (bgImage && containerRef.current) {
+    if (containerRef.current) {
       const containerW = containerRef.current.offsetWidth;
       const containerH = containerRef.current.offsetHeight;
 
-      const scaleW = (containerW * 0.85) / bgImage.width;
-      const scaleH = (containerH * 0.85) / bgImage.height;
+      const scaleW = (containerW * 0.85) / 1024;
+      const scaleH = (containerH * 0.85) / 1024;
       const initialScale = Math.max(0.3, Math.min(1.5, Math.min(scaleW, scaleH)));
 
       setStageScale(initialScale);
       setStagePos({
-        x: (containerW - bgImage.width * initialScale) / 2,
-        y: (containerH - bgImage.height * initialScale) / 2,
+        x: (containerW - 1024 * initialScale) / 2,
+        y: (containerH - 1024 * initialScale) / 2,
       });
     }
-  }, [bgImage]);
+  }, [eventData]);
 
   // ZADANIE 6: Podepnij Transformer z react-konva pod zaznaczony węzeł po zmianie zaznaczenia
   useEffect(() => {
@@ -235,6 +178,33 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       trRef.current.getLayer()?.batchDraw();
     }
   }, [selectedTeamId, placedTeams]);
+
+  // Pomocnicza funkcja blokująca wyjazd mapy poza krawędzie ekranu 
+  // lub trzymająca w centrum (jeśli jest mniejsza niż ekran)
+  const getClampedStagePos = useCallback((scale, pos) => {
+    let x = pos.x;
+    let y = pos.y;
+    
+    const w = dimensions.width || window.innerWidth;
+    const h = dimensions.height || window.innerHeight;
+    
+    const mapW = 1024 * scale;
+    const mapH = 1024 * scale;
+    
+    if (mapW < w) {
+      x = (w - mapW) / 2;
+    } else {
+      x = Math.max(w - mapW, Math.min(0, x));
+    }
+    
+    if (mapH < h) {
+      y = (h - mapH) / 2;
+    } else {
+      y = Math.max(h - mapH, Math.min(0, y));
+    }
+    
+    return { x, y };
+  }, [dimensions]);
 
   // Obsługa przybliżania (Wheel Zoom) prosto w punkt kursora
   const handleWheel = useCallback((e) => {
@@ -261,8 +231,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     setStageScale(clampedScale);
-    setStagePos(newPos);
-  }, [stageScale, stagePos]);
+    setStagePos(getClampedStagePos(clampedScale, newPos));
+  }, [stageScale, stagePos, getClampedStagePos]);
 
   // Obsługa Drag & Drop szablonu zespołu z bocznego katalogu na canvas
   const handleDragOver = (e) => {
@@ -536,22 +506,22 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     setStageScale(clampedScale);
-    setStagePos(newPos);
+    setStagePos(getClampedStagePos(clampedScale, newPos));
   };
 
   const handleResetCamera = () => {
-    if (bgImage && containerRef.current) {
+    if (containerRef.current) {
       const containerW = containerRef.current.offsetWidth;
       const containerH = containerRef.current.offsetHeight;
-      const scaleW = (containerW * 0.85) / bgImage.width;
-      const scaleH = (containerH * 0.85) / bgImage.height;
+      const scaleW = (containerW * 0.85) / 1024;
+      const scaleH = (containerH * 0.85) / 1024;
       const initialScale = Math.max(0.3, Math.min(1.5, Math.min(scaleW, scaleH)));
 
       setStageScale(initialScale);
-      setStagePos({
-        x: (containerW - bgImage.width * initialScale) / 2,
-        y: (containerH - bgImage.height * initialScale) / 2,
-      });
+      setStagePos(getClampedStagePos(initialScale, {
+        x: (containerW - 1024 * initialScale) / 2,
+        y: (containerH - 1024 * initialScale) / 2,
+      }));
     }
   };
 
@@ -564,21 +534,36 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       onDrop={handleDrop}
       className="absolute inset-0 w-full h-full bg-slate-950 overflow-hidden select-none"
     >
-      {/* Baner ładowania lub ponawiania pobierania tła satelitarnego */}
-      {bgStatus === 'loading' && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm pointer-events-none animate-fade-in">
-          <div className="glass-panel-strong px-8 py-5 rounded-2xl flex items-center gap-4 border-indigo-400/40 shadow-2xl">
-            <div className="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
-            <div>
-              <h4 className="font-extrabold text-white text-sm sm:text-base">⏳ Pobieranie zrzutu satelitarnego (Ultra HD)...</h4>
-              <p className="text-xs text-indigo-300 font-mono">Generowanie tła roboczego z wykadrowanego obszaru</p>
-            </div>
-          </div>
+      {/* Google Maps Tło (Zoom i Pan mapy jest sterowane przez CSS transform dla synchronizacji z Konva) */}
+      {eventData?.bounds && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 1024,
+            height: 1024,
+            transformOrigin: '0 0',
+            transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${stageScale})`,
+            zIndex: 0,
+            pointerEvents: 'none' // blokujemy eventy dla mapy, obsługuje je Konva!
+          }}
+        >
+          <Map3D
+            center={{ lat: eventData.bounds.center[1], lng: eventData.bounds.center[0], altitude: eventData.bounds.centerElevation || 0 }}
+            range={Math.pow(2, 21 - (eventData.bounds.zoom || 17)) * 25}
+            fov={35}
+            tilt={0}
+            heading={mapHeading}
+            mode="SATELLITE"
+            defaultLabelsDisabled={false}
+          />
         </div>
       )}
 
-      {/* react-konva Stage */}
+      {/* react-konva Stage (Ustawiona w absolutnym pozycjonowaniu nad Google Mapą) */}
       <Stage
+        style={{ position: 'absolute', inset: 0, zIndex: 10 }}
         ref={stageRef}
         width={dimensions.width}
         height={dimensions.height}
@@ -588,52 +573,41 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         onClick={handleStageClick}
         onTap={handleStageClick}
         draggable={isPanMode || selectedTeamId === null}
+        dragBoundFunc={(pos) => getClampedStagePos(stageScale, pos)}
+        onDragMove={(e) => {
+          if (e.target === stageRef.current) {
+            setStagePos(getClampedStagePos(stageScale, { x: e.target.x(), y: e.target.y() }));
+          }
+        }}
         onDragEnd={(e) => {
           if (e.target === stageRef.current) {
-            setStagePos({ x: e.target.x(), y: e.target.y() });
+            setStagePos(getClampedStagePos(stageScale, { x: e.target.x(), y: e.target.y() }));
           }
         }}
         className="cursor-default active:cursor-grabbing"
       >
-        {/* Warstwa 1: Obraz Satelitarny (Tło) */}
-        <Layer id="bg-layer">
-          {bgImage && (
-            <KonvaImage
-              name="background-image"
-              image={bgImage}
-              x={0}
-              y={0}
-              width={bgImage.width}
-              height={bgImage.height}
-              shadowColor="#000000"
-              shadowBlur={30}
-              shadowOpacity={0.7}
-            />
-          )}
-        </Layer>
-
-        {/* Warstwa 2: Ramka, Siatka i Zespoły (zawsze czysta od CORS) */}
+        {/* Warstwa 2: Ramka, Siatka i Zespoły */}
         <Layer id="teams-layer">
-          {/* Ramka granic obszaru toru */}
-          {bgImage && (
-            <Rect
-              x={0}
-              y={0}
-              width={bgImage.width}
-              height={bgImage.height}
-              stroke="rgba(255, 255, 255, 0.25)"
-              strokeWidth={2 / stageScale}
-              listening={false}
-            />
-          )}
+          {/* Ramka granic obszaru toru - wyciągnięta przed grupę, by zawsze była prosta i otaczała widok */}
+          <Rect
+            x={0}
+            y={0}
+            width={1024}
+            height={1024}
+            stroke="rgba(255, 255, 255, 0.25)"
+            strokeWidth={2 / stageScale}
+            listening={false}
+          />
+          <Group x={512} y={512} offsetX={512} offsetY={512} rotation={mapHeading}>
 
-          {/* 2. Zespoły umieszczone na torze (Team Nodes) */}
+
+            {/* 2. Zespoły umieszczone na torze (Team Nodes) */}
           {placedTeams.map((team, index) => {
             const isSelected = selectedTeamId === team.id;
             const isColliding = collidingTeamIds.includes(team.id);
             const pxWidth = team.widthMeters * pixelsPerMeter;
             const pxHeight = team.heightMeters * pixelsPerMeter;
-            
+
             // Skalowanie do szerokości prostokąta (w poziomie, bez łamania słów)
             const nameLen = Math.max(1, (team.name || '').length);
             const dimText = `${team.widthMeters}×${team.heightMeters}m`;
@@ -644,7 +618,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
             // Nazwa skalowana do wielkości kontenera (bez sztucznego limitu 16px, by rosła z kontenerem!)
             const nameFontSize = Math.max(5, Math.min(pxHeight * 0.28, maxNameSizeByWidth));
-            
+
             // Wymiary pozostają tak, jak są - czytelne i zgrabne w tej pozycji na dole
             const dimFontSize = Math.max(7, Math.min(13, Math.min(pxHeight * 0.16, maxDimSizeByWidth)));
 
@@ -778,6 +752,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               onTransformEnd={handleTransformEnd}
             />
           )}
+          </Group>
         </Layer>
       </Stage>
 
@@ -791,81 +766,129 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         pixelsPerMeter={pixelsPerMeter}
       />
 
-      {/* HUD: Kontrolki kamery i trybów połączone w jeden elegancki, półprzeźroczysty szklany panel (zgodnie ze zdjęciem) */}
-      <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
-        <div className="glass-panel p-3 flex items-center gap-3 shadow-glass border-white/20">
-          {/* Lewa kolumna: przyciski zoomu + - ⌂ */}
-          <div className="flex flex-col gap-1.5 shrink-0">
-            <button
-              onClick={() => handleZoom('in')}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
-              title="Przybliż (Zoom In)"
-            >
-              +
-            </button>
-            <button
-              onClick={() => handleZoom('out')}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
-              title="Oddal (Zoom Out)"
-            >
-              −
-            </button>
-            <div className="w-full h-[1px] bg-white/15 my-0.5" />
-            <button
-              onClick={handleResetCamera}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-indigo-300 text-xs font-semibold shadow-sm"
-              title="Wyśrodkuj kamerę na torze"
-            >
-              ⌂
-            </button>
-          </div>
+      {/* HUD: Kontrolki kamery i trybów połączone w jeden elegancki, półprzeźroczysty szklany panel */}
+      <div className="absolute bottom-6 left-6 z-30 pointer-events-none">
+        <div className={`glass-panel p-2 flex items-stretch gap-2 shadow-glass border-white/20 transition-all duration-500 ease-in-out overflow-hidden pointer-events-auto ${isBottomControlsCollapsed ? 'w-[52px]' : 'w-auto'}`}>
+          
+          {/* Przycisk zwijania/rozwijania wbudowany w panel */}
+          <button
+            onClick={() => setIsBottomControlsCollapsed(!isBottomControlsCollapsed)}
+            className="w-9 h-auto min-h-[40px] rounded-xl flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all shrink-0"
+            title={isBottomControlsCollapsed ? 'Rozwiń narzędzia' : 'Zwiń narzędzia'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className={`w-5 h-5 transition-transform duration-500 ${isBottomControlsCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
 
-          {/* Pionowy separator */}
-          <div className="w-[1px] self-stretch min-h-[100px] bg-white/15 shrink-0" />
-
-          {/* Prawa kolumna wewnątrz czarnego szklanego bloku: Tryb Przesuwania, Magnes oraz Nakładanie */}
-          <div className="flex flex-col gap-2 justify-center w-52 shrink-0">
-            {/* Tryb Panning Toggle */}
-            <button
-              onClick={() => setIsPanMode(!isPanMode)}
-              className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
-                isPanMode
-                  ? 'bg-indigo-600 border border-indigo-400 text-white shadow-indigo-500/30'
-                  : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
-              }`}
-            >
-              <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
-            </button>
-
-            {/* Toggle Magnesu */}
-            {onToggleMagnet && (
+          {/* Główny dolny kontener narzędzi */}
+          <div className={`flex items-stretch gap-3 transition-all duration-500 origin-left ${isBottomControlsCollapsed ? 'opacity-0 scale-95 w-0 px-0' : 'opacity-100 scale-100 px-2 py-1'}`}>
+            {/* Lewa kolumna: przyciski zoomu + - ⌂ */}
+            <div className="flex flex-col gap-1.5 shrink-0">
               <button
-                onClick={onToggleMagnet}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
-                  enableMagnet
-                    ? 'bg-cyan-600 border border-cyan-400 text-white shadow-cyan-500/30'
+                onClick={() => handleZoom('in')}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
+                title="Przybliż (Zoom In)"
+              >
+                +
+              </button>
+              <button
+                onClick={() => handleZoom('out')}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white font-bold text-lg shadow-sm"
+                title="Oddal (Zoom Out)"
+              >
+                −
+              </button>
+              <div className="w-full h-[1px] bg-white/15 my-0.5" />
+              <button
+                onClick={handleResetCamera}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-indigo-300 text-xs font-semibold shadow-sm"
+                title="Wyśrodkuj kamerę na torze"
+              >
+                ⌂
+              </button>
+            </div>
+
+            {/* Pionowy separator */}
+            <div className="w-[1px] self-stretch min-h-[100px] bg-white/15 shrink-0" />
+
+            {/* Prawa kolumna: Tryb Przesuwania, Magnes oraz Nakładanie */}
+            <div className="flex flex-col gap-2 justify-center w-52 shrink-0">
+              {/* Tryb Panning Toggle */}
+              <button
+                onClick={() => setIsPanMode(!isPanMode)}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${isPanMode
+                    ? 'bg-indigo-600 border border-indigo-400 text-white shadow-indigo-500/30'
                     : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
-                }`}
-                title="Przełącz automatyczne przyciąganie namiotów do siebie jak magnes podczas przesuwania"
+                  }`}
               >
-                <span>{enableMagnet ? '🧲 Magnes: WŁĄCZONY' : '🧲 Magnes: WYŁĄCZONY'}</span>
+                <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
               </button>
-            )}
 
-            {/* Toggle Kolizji */}
-            {onToggleCollisions && (
+              {/* Toggle Magnesu */}
+              {onToggleMagnet && (
+                <button
+                  onClick={onToggleMagnet}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${enableMagnet
+                      ? 'bg-cyan-600 border border-cyan-400 text-white shadow-cyan-500/30'
+                      : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+                    }`}
+                  title="Przełącz automatyczne przyciąganie namiotów do siebie jak magnes podczas przesuwania"
+                >
+                  <span>{enableMagnet ? '🧲 Magnes: WŁĄCZONY' : '🧲 Magnes: WYŁĄCZONY'}</span>
+                </button>
+              )}
+
+              {/* Toggle Kamery */}
               <button
-                onClick={onToggleCollisions}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${
-                  allowCollisions
-                    ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
-                    : 'bg-emerald-600/80 border border-emerald-400 text-white hover:bg-emerald-600'
-                }`}
-                title="Przełącz wykrywanie i blokowanie kolizji między namiotami"
+                onClick={() => setShowCameraControls(!showCameraControls)}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${showCameraControls
+                    ? 'bg-purple-600 border border-purple-400 text-white shadow-purple-500/30'
+                    : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+                  }`}
+                title="Steruj obrotem kamery (Kąt widzenia)"
               >
-                <span>{allowCollisions ? '⚠️ Nakładanie: DOZW.' : '🛡️ Nakładanie: BLOKOWANE'}</span>
+                <span>🎥 Kamera</span>
               </button>
-            )}
+              
+              {/* Toggle Kolizji */}
+              {onToggleCollisions && (
+                <button
+                  onClick={onToggleCollisions}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${allowCollisions
+                      ? 'bg-amber-500/80 border border-amber-400 text-white animate-pulse'
+                      : 'bg-emerald-600/80 border border-emerald-400 text-white hover:bg-emerald-600'
+                    }`}
+                  title="Przełącz wykrywanie i blokowanie kolizji między namiotami"
+                >
+                  <span>{allowCollisions ? '⚠️ Nakładanie: DOZW.' : '🛡️ Nakładanie: BLOKOWANE'}</span>
+                </button>
+              )}
+              {/* Wbudowany suwak obrotu kamery */}
+              {showCameraControls && (
+                <div className="mt-1 p-3 bg-black/20 rounded-xl border border-white/10 flex flex-col gap-3 animate-fade-in shadow-inner">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-indigo-300 font-semibold uppercase tracking-wider">Obrót</span>
+                    <span className="text-white/90 font-mono font-bold bg-white/10 px-1.5 py-0.5 rounded">{Math.round(mapHeading)}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="1"
+                    value={mapHeading}
+                    onChange={(e) => setMapHeading(Number(e.target.value))}
+                    className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                  <button
+                    onClick={() => setMapHeading(0)}
+                    className="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-transparent hover:border-white/10 text-white/80 hover:text-white text-[10px] font-bold transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <span>🧭</span> Przywróć północ
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -878,13 +901,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         </div>
       )}
 
-      {/* Informacja o ładowaniu tła */}
-      {bgStatus === 'loading' && (
-        <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center gap-3 z-20 pointer-events-none">
-          <div className="w-10 h-10 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-white/80 font-medium">Ładowanie satelitarnego tła toru ({eventData?.widthMeters || 250}m)...</p>
-        </div>
-      )}
     </div>
   );
 });

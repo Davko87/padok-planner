@@ -21,7 +21,8 @@ function PlannerPage() {
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
   const [enableMagnet, setEnableMagnet] = useState(true);
-  const [scalePx, setScalePx] = useState(0);
+  const [scalePx, setScalePx] = useState(null);
+  const [isLeftHudCollapsed, setIsLeftHudCollapsed] = useState(false);
   const getViewportCenterRef = useRef(null);
   const canvasRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -79,13 +80,16 @@ function PlannerPage() {
 
     // Jeśli to tor z naszej bazy lub preset — od razu ładujemy go synchronicznie! (Brak blokady na ładowaniu!)
     if (trackPreset) {
-      const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${trackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
+      const [minLng, minLat, maxLng, maxLat] = trackPreset.bbox.split(',').map(Number);
       setEventData({
         id: eventId,
         name: trackPreset.name,
         widthMeters: trackPreset.w,
         heightMeters: trackPreset.h,
-        imageUrl: esriUrl,
+        bounds: {
+          center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
+          zoom: 17
+        }
       });
       setIsLoadingEvent(false);
       if (!hasLoadedInitialTeams.current) {
@@ -99,13 +103,16 @@ function PlannerPage() {
         if (prev && !eventData) {
           // Jeśli po 1.5s nadal nic nie pobrano z Firestore, ustaw domyślny tor z mapą satelitarną
           const fallbackPreset = PRESET_TRACKS['tor-poznan'];
-          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
+          const [minLng, minLat, maxLng, maxLat] = fallbackPreset.bbox.split(',').map(Number);
           setEventData({
             id: eventId,
             name: `Padok Toru (${eventId})`,
             widthMeters: 250,
             heightMeters: 180,
-            imageUrl: esriUrl,
+            bounds: {
+              center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
+              zoom: 17
+            }
           });
           return false;
         }
@@ -123,9 +130,7 @@ function PlannerPage() {
           const data = { id: docSnap.id, ...docSnap.data() };
           setEventData((prev) => ({
             ...prev,
-            ...data,
-            // Jeśli obiekt w chmurze nie ma zdjęcia, użyj zdjęcia z presetu Esri w jakości 2048px (HD)
-            imageUrl: data.imageUrl || prev?.imageUrl || `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=16.7942,52.4170,16.7982,52.4200&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`,
+            ...data
           }));
           
           // Jeśli gość (nie zalogowany), ładujemy układy publiczne z głównego eventu
@@ -137,13 +142,16 @@ function PlannerPage() {
         } else if (!trackPreset) {
           // Jeśli nie było w presetach ani w Firestore, ustaw domyślne parametry zamiast błędu
           const fallbackPreset = PRESET_TRACKS['tor-poznan'];
-          const esriUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${fallbackPreset.bbox}&bboxSR=4326&size=2048,2048&imageSR=4326&format=png&f=image`;
+          const [minLng, minLat, maxLng, maxLat] = fallbackPreset.bbox.split(',').map(Number);
           setEventData({
             id: eventId,
             name: `Nowy Padok: ${eventId}`,
             widthMeters: 250,
             heightMeters: 180,
-            imageUrl: esriUrl,
+            bounds: {
+              center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
+              zoom: 17
+            }
           });
         }
         setIsLoadingEvent(false);
@@ -495,8 +503,36 @@ function PlannerPage() {
       />
 
       {/* ZADANIE: Górny panel szklany przeniesiony na lewą stronę w pionie (Pionowy Panel HUD po lewej) */}
-      <header className="absolute top-4 left-4 z-40 w-60 pointer-events-none">
-        <div className="glass-panel p-4 flex flex-col gap-4 pointer-events-auto shadow-glass-lg border-white/25">
+      <header className={`absolute top-4 left-4 z-40 transition-all duration-500 ease-out pointer-events-none ${isLeftHudCollapsed ? 'w-12' : 'w-60'}`}>
+        <div className="glass-panel flex flex-col gap-0 pointer-events-auto shadow-glass-lg border-white/25 overflow-hidden">
+          
+          {/* Header z przyciskiem zwijania */}
+          <div className="p-3 flex items-center justify-between bg-transparent border-b border-white/10">
+            {!isLeftHudCollapsed && (
+              <span className="text-xs font-bold text-white/80 tracking-wider">HUD</span>
+            )}
+            <button
+              onClick={() => setIsLeftHudCollapsed(!isLeftHudCollapsed)}
+              className="p-1.5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors mx-auto"
+              title={isLeftHudCollapsed ? 'Rozwiń HUD' : 'Zwiń HUD'}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`w-4 h-4 transition-transform duration-300 ${isLeftHudCollapsed ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Rozwinięta zawartość */}
+          <div className={`grid transition-all duration-500 ease-in-out ${isLeftHudCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+            <div className="overflow-hidden">
+              <div className="flex flex-col gap-4 p-4 min-w-[240px]">
           {/* Przycisk Powrót na Globus */}
           <button
             onClick={() => navigate('/')}
@@ -522,7 +558,7 @@ function PlannerPage() {
             </h2>
             {eventData && (
               <p className="text-[11px] font-mono text-emerald-300">
-                Tor: {eventData.widthMeters} × {eventData.heightMeters || eventData.widthMeters} m
+                Tor: {Math.round(eventData.widthMeters)} × {Math.round(eventData.heightMeters || eventData.widthMeters)} m
               </p>
             )}
 
@@ -622,6 +658,9 @@ function PlannerPage() {
             >
               <span>📄 PDF</span>
             </button>
+          </div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
