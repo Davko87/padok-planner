@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Text, Group, Transformer, Line, Circle } from 'react-konva';
 import { Map3D } from '@vis.gl/react-google-maps';
 import DPadControls from './DPadControls.jsx';
-import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
+import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition, findCombinedMagneticSnap } from '../lib/geoUtils.js';
 
 const PaddockCanvas = forwardRef(function PaddockCanvas({
   eventData,
   placedTeams = [],
   onUpdateTeams,
+  guideLines = [],
+  onUpdateGuideLines,
+  measurements = [],
+  onUpdateMeasurements,
   selectedTeamId,
   onSelectTeam,
   allowCollisions = false,
@@ -23,6 +27,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const trRef = useRef(null);
   const selectedNodeRefs = useRef({});
   const lastValidCoordsRef = useRef({});
+  const teamsGroupRef = useRef(null);
 
   const [collidingTeamIds, setCollidingTeamIds] = useState([]);
   const [collisionToast, setCollisionToast] = useState('');
@@ -39,7 +44,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         const stage = stageRef.current;
         if (!stage) return null;
         const screenCenter = { x: stage.width() / 2, y: stage.height() / 2 };
-        const transform = stage.getAbsoluteTransform().copy();
+        const node = teamsGroupRef.current || stage;
+        const transform = node.getAbsoluteTransform().copy();
         transform.invert();
         return transform.point(screenCenter);
       };
@@ -69,7 +75,36 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   // Kamera stage (pozycja i zoom)
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
-  const [isPanMode, setIsPanMode] = useState(false);
+  const [isDrawingLine, setIsDrawingLine] = useState(false);
+  const [currentDrawingLine, setCurrentDrawingLine] = useState(null);
+  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [currentMeasureLine, setCurrentMeasureLine] = useState(null);
+  const [selectedLine, setSelectedLine] = useState(null); // { id: string, type: 'guide' | 'measure' }
+
+  useEffect(() => {
+    if (selectedTeamId !== null) {
+      setSelectedLine(null);
+    }
+  }, [selectedTeamId]);
+
+  // Obsługa klawiszy Delete / Backspace do usuwania zaznaczonej linii
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedLine) {
+          e.preventDefault();
+          if (selectedLine.type === 'guide') {
+            onUpdateGuideLines && onUpdateGuideLines((guideLines || []).filter((l) => l.id !== selectedLine.id));
+          } else {
+            onUpdateMeasurements && onUpdateMeasurements((measurements || []).filter((m) => m.id !== selectedLine.id));
+          }
+          setSelectedLine(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedLine, guideLines, measurements, onUpdateGuideLines, onUpdateMeasurements]);
 
   // Google Maps używane jako tło interaktywne
 
@@ -252,7 +287,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
       stage.setPointersPositions(e);
       const pointerPos = stage.getPointerPosition();
-      const transform = stage.getAbsoluteTransform().copy();
+      const node = teamsGroupRef.current || stage;
+      const transform = node.getAbsoluteTransform().copy();
       transform.invert();
       const localPoint = transform.point(pointerPos);
 
@@ -275,7 +311,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
       }
       if (enableMagnet) {
-        const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, pixelsPerMeter, 0.8);
+        const snapped = findCombinedMagneticSnap(newTeamNode, placedTeams, guideLines, pixelsPerMeter, 0.8);
         if (snapped) {
           newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
         }
@@ -297,10 +333,76 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     }
   };
 
-  // Kliknięcie w puste tło odznacza team
+  // Kliknięcie w puste tło odznacza team i linię
   const handleStageClick = (e) => {
     if (e.target === stageRef.current || e.target.name() === 'background-image') {
       onSelectTeam && onSelectTeam(null);
+      setSelectedLine(null);
+    }
+  };
+
+  // Obsługa rysowania linii krawężnika / pomocniczej lub linii pomiarowej (linijka)
+  const handleStageMouseDown = (e) => {
+    if (!isDrawingLine && !isMeasuring) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+    const node = teamsGroupRef.current || stage;
+    const transform = node.getAbsoluteTransform().copy();
+    transform.invert();
+    const pt = transform.point(pointerPos);
+    if (isDrawingLine) {
+      setCurrentDrawingLine({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+    } else if (isMeasuring) {
+      setCurrentMeasureLine({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+    }
+  };
+
+  const handleStageMouseMove = (e) => {
+    if ((!isDrawingLine && !isMeasuring) || (!currentDrawingLine && !currentMeasureLine)) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+    const node = teamsGroupRef.current || stage;
+    const transform = node.getAbsoluteTransform().copy();
+    transform.invert();
+    const pt = transform.point(pointerPos);
+    if (isDrawingLine && currentDrawingLine) {
+      setCurrentDrawingLine((prev) => (prev ? { ...prev, x2: pt.x, y2: pt.y } : null));
+    } else if (isMeasuring && currentMeasureLine) {
+      setCurrentMeasureLine((prev) => (prev ? { ...prev, x2: pt.x, y2: pt.y } : null));
+    }
+  };
+
+  const handleStageMouseUp = (e) => {
+    if (isDrawingLine && currentDrawingLine) {
+      const dist = Math.hypot(currentDrawingLine.x2 - currentDrawingLine.x1, currentDrawingLine.y2 - currentDrawingLine.y1);
+      if (dist > 15) {
+        const newLine = {
+          id: 'line_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          x1: currentDrawingLine.x1,
+          y1: currentDrawingLine.y1,
+          x2: currentDrawingLine.x2,
+          y2: currentDrawingLine.y2,
+        };
+        onUpdateGuideLines && onUpdateGuideLines([...(guideLines || []), newLine]);
+      }
+      setCurrentDrawingLine(null);
+    } else if (isMeasuring && currentMeasureLine) {
+      const dist = Math.hypot(currentMeasureLine.x2 - currentMeasureLine.x1, currentMeasureLine.y2 - currentMeasureLine.y1);
+      if (dist > 5) {
+        const newMeasure = {
+          id: 'meas_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          x1: currentMeasureLine.x1,
+          y1: currentMeasureLine.y1,
+          x2: currentMeasureLine.x2,
+          y2: currentMeasureLine.y2,
+        };
+        onUpdateMeasurements && onUpdateMeasurements([...(measurements || []), newMeasure]);
+      }
+      setCurrentMeasureLine(null);
     }
   };
 
@@ -314,7 +416,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -371,7 +473,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -419,7 +521,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -572,7 +674,13 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         onWheel={handleWheel}
         onClick={handleStageClick}
         onTap={handleStageClick}
-        draggable={isPanMode || selectedTeamId === null}
+        draggable={!isDrawingLine && !isMeasuring && selectedTeamId === null}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
+        onTouchStart={handleStageMouseDown}
+        onTouchMove={handleStageMouseMove}
+        onTouchEnd={handleStageMouseUp}
         dragBoundFunc={(pos) => getClampedStagePos(stageScale, pos)}
         onDragMove={(e) => {
           if (e.target === stageRef.current) {
@@ -598,8 +706,194 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
             strokeWidth={2 / stageScale}
             listening={false}
           />
-          <Group x={512} y={512} offsetX={512} offsetY={512} rotation={mapHeading}>
+          <Group ref={teamsGroupRef} x={512} y={512} offsetX={512} offsetY={512} rotation={-mapHeading}>
+            {/* 1.5 Linie pomocnicze / krawężniki (do których przyciągają się namioty) */}
+            {(guideLines || []).map((line) => {
+              const isSelected = selectedLine && selectedLine.id === line.id && selectedLine.type === 'guide';
+              return (
+                <Group key={line.id}>
+                  {/* Szeroki, niewidoczny obszar do łatwego kliknięcia / zaznaczenia linii */}
+                  <Line
+                    points={[line.x1, line.y1, line.x2, line.y2]}
+                    stroke="rgba(239, 68, 68, 0.4)"
+                    strokeWidth={20 / stageScale}
+                    opacity={isSelected ? 1 : 0}
+                    lineCap="round"
+                    cursor="pointer"
+                    onClick={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: line.id, type: 'guide' });
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: line.id, type: 'guide' });
+                    }}
+                  />
+                  {/* Widoczna linia krawężnika */}
+                  <Line
+                    points={[line.x1, line.y1, line.x2, line.y2]}
+                    stroke={isSelected ? '#ef4444' : isDrawingLine ? '#ef4444' : '#f59e0b'}
+                    strokeWidth={isSelected ? 4 : isDrawingLine ? 3 : 2}
+                    dash={[6, 4]}
+                    lineCap="round"
+                    listening={false}
+                  />
+                  {/* Punkty końcowe */}
+                  {(isSelected || isDrawingLine) && (
+                    <>
+                      <Circle x={line.x1} y={line.y1} radius={5} fill={isSelected ? '#ef4444' : '#f59e0b'} listening={false} />
+                      <Circle x={line.x2} y={line.y2} radius={5} fill={isSelected ? '#ef4444' : '#f59e0b'} listening={false} />
+                    </>
+                  )}
+                </Group>
+              );
+            })}
 
+            {/* Podgląd rysowanej aktualnie linii */}
+            {currentDrawingLine && (
+              <Line
+                points={[currentDrawingLine.x1, currentDrawingLine.y1, currentDrawingLine.x2, currentDrawingLine.y2]}
+                stroke="#fbbf24"
+                strokeWidth={3}
+                dash={[6, 4]}
+                lineCap="round"
+              />
+            )}
+
+            {/* 1.6 Linie pomiarowe (linijka odległości) */}
+            {(measurements || []).map((m) => {
+              const isSelected = selectedLine && selectedLine.id === m.id && selectedLine.type === 'measure';
+              const dx = m.x2 - m.x1;
+              const dy = m.y2 - m.y1;
+              const distPx = Math.hypot(dx, dy);
+              if (distPx < 1) return null;
+              const distM = (distPx / pixelsPerMeter);
+              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
+              const midX = (m.x1 + m.x2) / 2;
+              const midY = (m.y1 + m.y2) / 2;
+              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
+              const badgeH = 22 / Math.max(0.4, stageScale);
+
+              return (
+                <Group key={m.id}>
+                  {/* Szeroka niewidoczna linia do kliknięcia/zaznaczenia */}
+                  <Line
+                    points={[m.x1, m.y1, m.x2, m.y2]}
+                    stroke="rgba(239, 68, 68, 0.4)"
+                    strokeWidth={20 / stageScale}
+                    opacity={isSelected ? 1 : 0}
+                    lineCap="round"
+                    cursor="pointer"
+                    onClick={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: m.id, type: 'measure' });
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: m.id, type: 'measure' });
+                    }}
+                  />
+                  <Line
+                    points={[m.x1, m.y1, m.x2, m.y2]}
+                    stroke={isSelected ? '#ef4444' : '#38bdf8'}
+                    strokeWidth={isSelected ? 4 / Math.max(0.4, stageScale) : 2.5 / Math.max(0.4, stageScale)}
+                    dash={[6, 4]}
+                    lineCap="round"
+                    listening={false}
+                  />
+                  <Circle x={m.x1} y={m.y1} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
+                  <Circle x={m.x2} y={m.y2} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
+                  <Group x={midX} y={midY} rotation={angleDeg} listening={false}>
+                    <Rect
+                      x={-badgeW / 2}
+                      y={-badgeH / 2}
+                      width={badgeW}
+                      height={badgeH}
+                      fill={isSelected ? '#dc2626' : '#0284c7'}
+                      stroke="#ffffff"
+                      strokeWidth={1 / Math.max(0.4, stageScale)}
+                      cornerRadius={6 / Math.max(0.4, stageScale)}
+                      shadowColor="#000000"
+                      shadowBlur={4}
+                      shadowOpacity={0.5}
+                    />
+                    <Text
+                      text={distText}
+                      x={-badgeW / 2}
+                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
+                      width={badgeW}
+                      align="center"
+                      fill="#ffffff"
+                      fontSize={11 / Math.max(0.4, stageScale)}
+                      fontFamily="monospace"
+                      fontStyle="bold"
+                    />
+                  </Group>
+                </Group>
+              );
+            })}
+
+            {/* Podgląd aktualnie rysowanej linii pomiarowej */}
+            {currentMeasureLine && (() => {
+              const dx = currentMeasureLine.x2 - currentMeasureLine.x1;
+              const dy = currentMeasureLine.y2 - currentMeasureLine.y1;
+              const distPx = Math.hypot(dx, dy);
+              if (distPx < 1) return null;
+              const distM = (distPx / pixelsPerMeter);
+              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
+              const midX = (currentMeasureLine.x1 + currentMeasureLine.x2) / 2;
+              const midY = (currentMeasureLine.y1 + currentMeasureLine.y2) / 2;
+              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
+              const badgeH = 22 / Math.max(0.4, stageScale);
+
+              return (
+                <Group>
+                  <Line
+                    points={[currentMeasureLine.x1, currentMeasureLine.y1, currentMeasureLine.x2, currentMeasureLine.y2]}
+                    stroke="#38bdf8"
+                    strokeWidth={2.5 / Math.max(0.4, stageScale)}
+                    dash={[4, 4]}
+                    lineCap="round"
+                  />
+                  <Circle x={currentMeasureLine.x1} y={currentMeasureLine.y1} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
+                  <Circle x={currentMeasureLine.x2} y={currentMeasureLine.y2} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
+                  <Group x={midX} y={midY} rotation={angleDeg}>
+                    <Rect
+                      x={-badgeW / 2}
+                      y={-badgeH / 2}
+                      width={badgeW}
+                      height={badgeH}
+                      fill="#0ea5e9"
+                      stroke="#ffffff"
+                      strokeWidth={1 / Math.max(0.4, stageScale)}
+                      cornerRadius={6 / Math.max(0.4, stageScale)}
+                      shadowColor="#000000"
+                      shadowBlur={4}
+                      shadowOpacity={0.5}
+                    />
+                    <Text
+                      text={distText}
+                      x={-badgeW / 2}
+                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
+                      width={badgeW}
+                      align="center"
+                      fill="#ffffff"
+                      fontSize={11 / Math.max(0.4, stageScale)}
+                      fontFamily="monospace"
+                      fontStyle="bold"
+                    />
+                  </Group>
+                </Group>
+              );
+            })()}
 
             {/* 2. Zespoły umieszczone na torze (Team Nodes) */}
           {placedTeams.map((team, index) => {
@@ -641,18 +935,23 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 x={team.x}
                 y={team.y}
                 rotation={team.rotation || 0}
-                draggable
+                draggable={!isDrawingLine && !isMeasuring}
                 onClick={(e) => {
+                  if (isDrawingLine || isMeasuring) return;
                   e.cancelBubble = true;
                   onSelectTeam && onSelectTeam(team.id);
+                  setSelectedLine(null);
                 }}
                 onTap={(e) => {
+                  if (isDrawingLine || isMeasuring) return;
                   e.cancelBubble = true;
                   onSelectTeam && onSelectTeam(team.id);
+                  setSelectedLine(null);
                 }}
                 onDragStart={(e) => {
                   e.cancelBubble = true;
                   onSelectTeam && onSelectTeam(team.id);
+                  setSelectedLine(null);
                 }}
                 onDragMove={(e) => {
                   let candidate = {
@@ -661,7 +960,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                     y: e.target.y(),
                   };
                   if (enableMagnet) {
-                    const snapped = findMagneticSnapPosition(candidate, placedTeams, pixelsPerMeter, 0.8);
+                    const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
                     if (snapped) {
                       candidate = {
                         ...candidate,
@@ -756,6 +1055,36 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         </Layer>
       </Stage>
 
+      {/* Pływający HUD do usuwania zaznaczonej linii (pomocniczej lub pomiarowej) */}
+      {selectedLine && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900/95 border border-red-500/50 shadow-2xl px-5 py-3 rounded-2xl animate-bounce-in pointer-events-auto">
+          <div className="flex items-center gap-2 text-white text-xs font-semibold">
+            <span>{selectedLine.type === 'guide' ? '📏 Zaznaczono linię pomocniczą' : '📐 Zaznaczono linię pomiarową'}</span>
+          </div>
+          <button
+            onClick={() => {
+              if (selectedLine.type === 'guide') {
+                onUpdateGuideLines && onUpdateGuideLines((guideLines || []).filter((l) => l.id !== selectedLine.id));
+              } else {
+                onUpdateMeasurements && onUpdateMeasurements((measurements || []).filter((m) => m.id !== selectedLine.id));
+              }
+              setSelectedLine(null);
+            }}
+            className="py-1.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+            title="Usuń zaznaczoną linię"
+          >
+            🗑️ Usuń zaznaczoną linię
+          </button>
+          <button
+            onClick={() => setSelectedLine(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all text-sm cursor-pointer"
+            title="Anuluj zaznaczenie"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ZADANIE 6: Szklany Panel D-Pad na dole ekranu (Rozwiązanie "Grubego Palca") */}
       <DPadControls
         selectedTeam={selectedTeamObj}
@@ -812,18 +1141,96 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
             {/* Pionowy separator */}
             <div className="w-[1px] self-stretch min-h-[100px] bg-white/15 shrink-0" />
 
-            {/* Prawa kolumna: Tryb Przesuwania, Magnes oraz Nakładanie */}
+            {/* Prawa kolumna: Linie Pomocnicze, Magnes oraz Nakładanie */}
             <div className="flex flex-col gap-2 justify-center w-52 shrink-0">
-              {/* Tryb Panning Toggle */}
-              <button
-                onClick={() => setIsPanMode(!isPanMode)}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 ${isPanMode
-                    ? 'bg-indigo-600 border border-indigo-400 text-white shadow-indigo-500/30'
-                    : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+
+              {/* Toggle Rysowania Linii Pomocniczych (Krawężników) */}
+              <div className="flex gap-1 w-full">
+                <button
+                  onClick={() => {
+                    const nextDrawing = !isDrawingLine;
+                    setIsDrawingLine(nextDrawing);
+                    if (nextDrawing) {
+                      setIsMeasuring(false);
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine(null);
+                    }
+                  }}
+                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-1.5 ${
+                    isDrawingLine
+                      ? 'bg-amber-600 border border-amber-400 text-white shadow-amber-500/30 animate-pulse'
+                      : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
                   }`}
-              >
-                <span>{isPanMode ? '✋ Tryb Przesuwania' : '👆 Tryb Zaznaczania'}</span>
-              </button>
+                  title="Rysuj linię pomocniczą (np. krawężnik/chodnik), do której namioty będą się automatycznie przyciągać i wyrównywać"
+                >
+                  <span>{isDrawingLine ? '✏️ Rysowanie: WŁ' : '📏 Linia Pomocnicza'}</span>
+                </button>
+                {guideLines && guideLines.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (selectedLine && selectedLine.type === 'guide') {
+                        onUpdateGuideLines && onUpdateGuideLines((guideLines || []).filter((l) => l.id !== selectedLine.id));
+                        setSelectedLine(null);
+                      } else {
+                        onUpdateGuideLines && onUpdateGuideLines([]);
+                        setSelectedLine(null);
+                      }
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center ${
+                      selectedLine && selectedLine.type === 'guide'
+                        ? 'bg-red-600 border border-red-400 text-white shadow-red-500/50 animate-pulse'
+                        : 'bg-red-500/20 border border-red-500/30 text-red-200 hover:bg-red-500/30'
+                    }`}
+                    title={selectedLine && selectedLine.type === 'guide' ? "Usuń zaznaczoną linię pomocniczą" : "Usuń wszystkie narysowane linie pomocnicze"}
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+
+              {/* Toggle Pomiaru Odległości (Linijka) */}
+              <div className="flex gap-1 w-full">
+                <button
+                  onClick={() => {
+                    const nextMeasuring = !isMeasuring;
+                    setIsMeasuring(nextMeasuring);
+                    if (nextMeasuring) {
+                      setIsDrawingLine(false);
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine(null);
+                    }
+                  }}
+                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-1.5 ${
+                    isMeasuring
+                      ? 'bg-sky-600 border border-sky-400 text-white shadow-sky-500/30 animate-pulse'
+                      : 'bg-white/10 border border-white/20 text-white/90 hover:bg-white/20 hover:text-white'
+                  }`}
+                  title="Zmierz odległość między dwoma punktami na mapie (np. szerokość drogi wjazdowej lub odległość do namiotu)"
+                >
+                  <span>{isMeasuring ? '📐 Linijka: WŁ' : '📐 Pomiar (Linijka)'}</span>
+                </button>
+                {measurements && measurements.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (selectedLine && selectedLine.type === 'measure') {
+                        onUpdateMeasurements && onUpdateMeasurements((measurements || []).filter((m) => m.id !== selectedLine.id));
+                        setSelectedLine(null);
+                      } else {
+                        onUpdateMeasurements && onUpdateMeasurements([]);
+                        setSelectedLine(null);
+                      }
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center ${
+                      selectedLine && selectedLine.type === 'measure'
+                        ? 'bg-red-600 border border-red-400 text-white shadow-red-500/50 animate-pulse'
+                        : 'bg-red-500/20 border border-red-500/30 text-red-200 hover:bg-red-500/30'
+                    }`}
+                    title={selectedLine && selectedLine.type === 'measure' ? "Usuń zaznaczony pomiar odległości" : "Usuń wszystkie pomiary odległości"}
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
 
               {/* Toggle Magnesu */}
               {onToggleMagnet && (

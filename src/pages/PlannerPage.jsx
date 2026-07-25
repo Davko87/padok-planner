@@ -16,8 +16,9 @@ function PlannerPage() {
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
   const [errorEvent, setErrorEvent] = useState(null);
 
-  // Stan zespołów umieszczonych na płótnie toru
   const [placedTeams, setPlacedTeams] = useState([]);
+  const [guideLines, setGuideLines] = useState([]);
+  const [measurements, setMeasurements] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
   const [enableMagnet, setEnableMagnet] = useState(true);
@@ -136,6 +137,8 @@ function PlannerPage() {
           // Jeśli gość (nie zalogowany), ładujemy układy publiczne z głównego eventu
           if (!currentUser && !hasLoadedInitialTeams.current) {
             setPlacedTeams(data.teams || []);
+            setGuideLines(data.guideLines || []);
+            setMeasurements(data.measurements || []);
             hasLoadedInitialTeams.current = true;
           }
           setErrorEvent(null);
@@ -172,12 +175,16 @@ function PlannerPage() {
           const layoutData = layoutSnap.data();
           if (!hasLoadedInitialTeams.current) {
             setPlacedTeams(layoutData.teams || []);
+            setGuideLines(layoutData.guideLines || []);
+            setMeasurements(layoutData.measurements || []);
             hasLoadedInitialTeams.current = true;
           }
         } else {
           // Brak własnego układu na serwerze - pusta, czysta karta na start!
           if (!hasLoadedInitialTeams.current) {
             setPlacedTeams([]);
+            setGuideLines([]);
+            setMeasurements([]);
             hasLoadedInitialTeams.current = true;
           }
         }
@@ -201,7 +208,7 @@ function PlannerPage() {
       try {
         setSaveStatus('saving');
         const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-        const updated = { ...current, teams: placedTeams, updatedAt: Date.now() };
+        const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
         localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
         setSaveStatus('saved');
       } catch (e) {
@@ -216,6 +223,8 @@ function PlannerPage() {
         const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
         await setDoc(layoutRef, {
           teams: placedTeams,
+          guideLines,
+          measurements,
           updatedAt: serverTimestamp(),
         });
       } else {
@@ -223,6 +232,8 @@ function PlannerPage() {
         const docRef = doc(db, 'events', eventId);
         await updateDoc(docRef, {
           teams: placedTeams,
+          guideLines,
+          measurements,
           updatedAt: serverTimestamp(),
         });
       }
@@ -246,7 +257,7 @@ function PlannerPage() {
         try {
           setSaveStatus('saving');
           const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-          const updated = { ...current, teams: placedTeams, updatedAt: Date.now() };
+          const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
           localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
           setSaveStatus('saved');
         } catch (e) {
@@ -263,6 +274,8 @@ function PlannerPage() {
         const docRef = doc(db, 'events', eventId);
         await updateDoc(docRef, {
           teams: placedTeams,
+          guideLines,
+          measurements,
           updatedAt: serverTimestamp(),
         });
         setSaveStatus('saved');
@@ -273,7 +286,7 @@ function PlannerPage() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [placedTeams, eventId]);
+  }, [placedTeams, guideLines, measurements, eventId]);
 
   // Obsługa kliknięcia "+" w katalogu teamów -> dodaje na wolne miejsce w pobliżu środka sceny
   const handleSelectTeamFromCatalog = (teamTemplate) => {
@@ -491,6 +504,10 @@ function PlannerPage() {
         eventData={eventData}
         placedTeams={placedTeams}
         onUpdateTeams={setPlacedTeams}
+        guideLines={guideLines}
+        onUpdateGuideLines={setGuideLines}
+        measurements={measurements}
+        onUpdateMeasurements={setMeasurements}
         selectedTeamId={selectedTeamId}
         onSelectTeam={setSelectedTeamId}
         allowCollisions={allowCollisions}

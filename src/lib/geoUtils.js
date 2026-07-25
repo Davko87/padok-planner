@@ -276,8 +276,16 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     const O_h = other.heightMeters * pixelsPerMeter;
     const O_rot = other.rotation || 0;
 
-    const centerT = { x: targetTeam.x + T_w / 2, y: targetTeam.y + T_h / 2 };
-    const centerO = { x: O_x + O_w / 2, y: O_y + O_h / 2 };
+    const radT = ((targetTeam.rotation || 0) * Math.PI) / 180;
+    const centerT = {
+      x: targetTeam.x + (T_w * Math.cos(radT) - T_h * Math.sin(radT)) / 2,
+      y: targetTeam.y + (T_w * Math.sin(radT) + T_h * Math.cos(radT)) / 2,
+    };
+    const radO = ((other.rotation || 0) * Math.PI) / 180;
+    const centerO = {
+      x: O_x + (O_w * Math.cos(radO) - O_h * Math.sin(radO)) / 2,
+      y: O_y + (O_w * Math.sin(radO) + O_h * Math.cos(radO)) / 2,
+    };
     const approxDist = Math.hypot(centerT.x - centerO.x, centerT.y - centerO.y);
     if (approxDist > Math.max(T_w, T_h) + Math.max(O_w, O_h) + thresholdPx * 2) {
       continue;
@@ -375,9 +383,23 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     for (const u_val of [align_u_left, align_u_right]) {
       if (Math.abs(proj_u - u_val) < thresholdPx * 1.2) {
         let v_val = proj_v;
-        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
+        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
           if (Math.abs(proj_v - av) < thresholdPx * 1.5) {
             v_val = av;
+            break;
+          }
+        }
+        candidatesToTest.push({ proj_u: u_val, proj_v: v_val, rot: targetSnappedRot });
+      }
+    }
+
+    // 4. Wyrównanie wzdłuż krawędzi w pionie bez przylegania do ściany
+    for (const v_val of [align_v_top, align_v_bot]) {
+      if (Math.abs(proj_v - v_val) < thresholdPx * 1.2) {
+        let u_val = proj_u;
+        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
+          if (Math.abs(proj_u - au) < thresholdPx * 1.5) {
+            u_val = au;
             break;
           }
         }
@@ -484,5 +506,129 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
   }
 
   return bestCandidate;
+}
+
+/**
+ * ZADANIE: Przyciąganie namiotu do narysowanych linii pomocniczych / krawężników.
+ * Alignuje obrót do linii oraz wyrównuje krawędź prostokąta idealnie do linii krawężnika (jak kontener do kontenera).
+ */
+export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 1.0) {
+  if (!guideLines || guideLines.length === 0 || !targetTeam) return null;
+
+  const thresholdPx = thresholdMeters * pixelsPerMeter;
+  const T_w = targetTeam.widthMeters * pixelsPerMeter;
+  const T_h = targetTeam.heightMeters * pixelsPerMeter;
+  const T_rot = targetTeam.rotation || 0;
+
+  let bestCandidate = null;
+  let minDistance = Infinity;
+
+  for (const line of guideLines) {
+    const dx = line.x2 - line.x1;
+    const dy = line.y2 - line.y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 10) continue;
+
+    const lineDeg = ((Math.atan2(dy, dx) * (180 / Math.PI)) % 360 + 360) % 360;
+    const rad = (lineDeg * Math.PI) / 180;
+    const u = { x: Math.cos(rad), y: Math.sin(rad) };
+    const v = { x: -Math.sin(rad), y: Math.cos(rad) };
+
+    const diff0 = getShortestAngleDiff(T_rot, lineDeg);
+    const diff90 = getShortestAngleDiff(T_rot, (lineDeg + 90) % 360);
+    const diff180 = getShortestAngleDiff(T_rot, (lineDeg + 180) % 360);
+    const diff270 = getShortestAngleDiff(T_rot, (lineDeg + 270) % 360);
+
+    const minDiff = Math.min(diff0, diff90, diff180, diff270);
+    if (minDiff > 40) continue;
+
+    let targetSnappedRot = lineDeg;
+    let relRot = 0;
+    if (minDiff === diff0) {
+      targetSnappedRot = lineDeg;
+      relRot = 0;
+    } else if (minDiff === diff90) {
+      targetSnappedRot = (lineDeg + 90) % 360;
+      relRot = 90;
+    } else if (minDiff === diff180) {
+      targetSnappedRot = (lineDeg + 180) % 360;
+      relRot = 180;
+    } else {
+      targetSnappedRot = (lineDeg + 270) % 360;
+      relRot = 270;
+    }
+
+    let u_min_rel = 0, u_max_rel = T_w, v_min_rel = 0, v_max_rel = T_h;
+    if (relRot === 90) {
+      u_min_rel = -T_h; u_max_rel = 0;
+      v_min_rel = 0; v_max_rel = T_w;
+    } else if (relRot === 180) {
+      u_min_rel = -T_w; u_max_rel = 0;
+      v_min_rel = -T_h; v_max_rel = 0;
+    } else if (relRot === 270) {
+      u_min_rel = 0; u_max_rel = T_h;
+      v_min_rel = -T_w; v_max_rel = 0;
+    }
+
+    const dx_line = targetTeam.x - line.x1;
+    const dy_line = targetTeam.y - line.y1;
+    const proj_u = dx_line * u.x + dy_line * u.y;
+    const proj_v = dx_line * v.x + dy_line * v.y;
+
+    // Sprawdź czy namiot znajduje się wzdłuż odcinka linii (z marginesem)
+    if (proj_u + u_max_rel < -thresholdPx || proj_u + u_min_rel > len + thresholdPx) {
+      continue;
+    }
+
+    // Dwie krawędzie boczne namiotu rzutowane na oś v:
+    // 1. Krawędź bliższa w stronę -v: gdy proj_v = -v_min_rel, krawędź leży idealnie na linii v=0.
+    // 2. Krawędź bliższa w stronę +v: gdy proj_v = -v_max_rel, krawędź leży idealnie na linii v=0.
+    const cand_v_list = [-v_min_rel, -v_max_rel];
+
+    for (const v_val of cand_v_list) {
+      if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
+        let u_val = proj_u;
+        // Opcjonalne wyrównanie do początku (0) lub końca (len) linii
+        for (const au of [-u_min_rel, len - u_max_rel]) {
+          if (Math.abs(proj_u - au) < thresholdPx * 1.2) {
+            u_val = au;
+            break;
+          }
+        }
+
+        const snapX = line.x1 + u_val * u.x + v_val * v.x;
+        const snapY = line.y1 + u_val * u.y + v_val * v.y;
+        const dist = Math.hypot(snapX - targetTeam.x, snapY - targetTeam.y);
+
+        if (dist < minDistance) {
+          const candNode = { ...targetTeam, x: snapX, y: snapY, rotation: targetSnappedRot };
+          const collision = checkTeamCollidesWithOthers(candNode, allTeams, pixelsPerMeter, targetTeam.id);
+          if (!collision || collision === targetTeam.id) {
+            minDistance = dist;
+            bestCandidate = {
+              x: snapX,
+              y: snapY,
+              rotation: targetSnappedRot,
+              snappedToLineId: line.id,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return bestCandidate;
+}
+
+export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.8) {
+  const neighborSnap = findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, thresholdMeters);
+  const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 1.5);
+
+  if (neighborSnap && lineSnap) {
+    const distN = Math.hypot(neighborSnap.x - targetTeam.x, neighborSnap.y - targetTeam.y);
+    const distL = Math.hypot(lineSnap.x - targetTeam.x, lineSnap.y - targetTeam.y);
+    return distN <= distL ? neighborSnap : lineSnap;
+  }
+  return neighborSnap || lineSnap || null;
 }
 
