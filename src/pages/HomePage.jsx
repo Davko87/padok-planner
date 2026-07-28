@@ -166,7 +166,7 @@ function HomePage() {
       } else {
         polyline3DRef.current = new window.google.maps.maps3d.Polyline3DElement({
           coordinates: coords,
-          strokeColor: 'rgba(56, 189, 248, 0.8)',
+          strokeColor: 'rgba(16, 185, 129, 0.8)', // Ustawione na zielony zamiast jasnoniebieskiego
           strokeWidth: 4,
           altitudeMode
         });
@@ -180,22 +180,25 @@ function HomePage() {
       const pinDiv = document.createElement('div');
       pinDiv.style.width = '24px';
       pinDiv.style.height = '24px';
-      pinDiv.style.background = isStartPoint ? '#10b981' : '#38bdf8';
+      pinDiv.style.background = '#10b981'; // Zawsze zielone
       pinDiv.style.border = '2px solid white';
       pinDiv.style.borderRadius = '50%';
       pinDiv.style.display = 'flex';
       pinDiv.style.alignItems = 'center';
       pinDiv.style.justifyContent = 'center';
-      pinDiv.style.color = '#000';
+      pinDiv.style.color = '#fff';
       pinDiv.style.fontWeight = 'bold';
       pinDiv.style.fontSize = '12px';
       pinDiv.innerText = (idx + 1).toString();
       pinDiv.style.cursor = 'pointer';
+      pinDiv.style.pointerEvents = 'auto'; // Ważne dla klikalności
 
       if (isStartPoint && !isPolygonClosed && polygonPoints.length >= 3) {
         pinDiv.style.width = '32px';
         pinDiv.style.height = '32px';
-        pinDiv.style.boxShadow = '0 0 15px #10b981';
+        pinDiv.style.boxShadow = '0 0 20px #10b981';
+        pinDiv.style.border = '3px solid white';
+        // Zostawiamy zwykły click jako fallback, ale główne to gmp-click na markerze
         pinDiv.addEventListener('click', (e) => {
           e.stopPropagation();
           setIsPolygonClosed(true);
@@ -208,6 +211,15 @@ function HomePage() {
         altitudeMode: window.google.maps.maps3d.AltitudeMode.CLAMP_TO_GROUND
       });
       marker.append(pinDiv);
+      
+      // W Google Maps 3D markery emitują event 'gmp-click'
+      if (isStartPoint && !isPolygonClosed && polygonPoints.length >= 3) {
+        marker.addEventListener('gmp-click', (e) => {
+          e.stopPropagation();
+          setIsPolygonClosed(true);
+        });
+      }
+
       map.append(marker);
 
       markersRef.current.push(marker);
@@ -218,10 +230,25 @@ function HomePage() {
   useEffect(() => {
     if (!map || !isCustomFramingMode || isPolygonClosed) return;
     const listener = map.addEventListener('gmp-click', (e) => {
+      // Jeśli mamy minimum 3 punkty, kliknięcie bardzo blisko pierwszego punktu na mapie również powinno zamykać obrys jako fallback
+      if (e.position && polygonPoints.length >= 3) {
+        const dist = calculateHaversineDistanceMeters(e.position.lat, e.position.lng, polygonPoints[0][0], polygonPoints[0][1]);
+        if (dist < 40) { // Zasięg 40 metrów jako "zamknięcie" 
+          setIsPolygonClosed(true);
+          return;
+        }
+      }
       if (e.position) setPolygonPoints(prev => [...prev, [e.position.lat, e.position.lng]]);
     });
     return () => map.removeEventListener('gmp-click', listener);
-  }, [map, isCustomFramingMode, isPolygonClosed]);
+  }, [map, isCustomFramingMode, isPolygonClosed, polygonPoints]);
+
+  // Automatyczne wywołanie okienka po zamknięciu obrysu
+  useEffect(() => {
+    if (isPolygonClosed && isCustomFramingMode && polygonPoints.length >= 3) {
+      handleConfirmCustomBounds();
+    }
+  }, [isPolygonClosed]);
 
   const handleConfirmCustomBounds = async () => {
     if (!selectedTrack) return;
@@ -266,16 +293,18 @@ function HomePage() {
     }
 
     if (isCustomFramingMode && isPolygonClosed && polygonPoints.length >= 3) {
-      const targetMeters = maxDim * 1.1; // 10% marginesu
+      const targetMeters = maxDim * 1.15; // 15% marginesu przestrzennego
       const requiredRange = targetMeters / (2 * Math.tan(17.5 * Math.PI / 180));
-      // requiredRange to fizyczny dystans od kamery do terenu. 
-      // Skoro centrum w PaddockCanvas będzie miało altitude: elevation, 
-      // to range zostaje po prostu równy requiredRange.
       requiredZoom = 21 - Math.log2(requiredRange / 25);
+      
+      // Automatycznie przesuwamy kamerę na wycentrowany obszar z ładnym marginesem!
+      setCamera({
+        center: { lat: centerCoords[1], lng: centerCoords[0], altitude: elevation },
+        range: requiredRange,
+        tilt: 0,
+        heading: 0
+      });
     } else {
-      // Jeśli użytkownik tylko przybliżył mapę kamerą:
-      // camera.range to dystans kamery do POZIOMU MORZA. 
-      // Skoro teren ma wysokość "elevation", to prawdziwy dystans do terenu to:
       const rangeToGround = Math.max(10, camera.range - elevation);
       requiredZoom = 21 - Math.log2(rangeToGround / 25);
     }
