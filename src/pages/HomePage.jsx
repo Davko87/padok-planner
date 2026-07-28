@@ -177,52 +177,45 @@ function HomePage() {
     polygonPoints.forEach((pt, idx) => {
       const isStartPoint = idx === 0;
 
-      const pinDiv = document.createElement('div');
-      pinDiv.style.width = '24px';
-      pinDiv.style.height = '24px';
-      pinDiv.style.background = '#10b981'; // Zawsze zielone
-      pinDiv.style.border = '2px solid white';
-      pinDiv.style.borderRadius = '50%';
-      pinDiv.style.display = 'flex';
-      pinDiv.style.alignItems = 'center';
-      pinDiv.style.justifyContent = 'center';
-      pinDiv.style.color = '#fff';
-      pinDiv.style.fontWeight = 'bold';
-      pinDiv.style.fontSize = '12px';
-      pinDiv.innerText = (idx + 1).toString();
-      pinDiv.style.cursor = 'pointer';
-      pinDiv.style.pointerEvents = 'auto'; // Ważne dla klikalności
+      // Zamiast problematycznych elementów HTML (Marker3DElement), używamy małych Polygon3DElement (rombów)
+      // Są one natywnie renderowane przez silnik 3D Google Maps i nigdy nie znikają.
+      const latOff = 0.00004; // ok. 4 metry
+      const lngOff = 0.00004 / Math.cos(pt[0] * Math.PI / 180);
 
-      if (isStartPoint && !isPolygonClosed && polygonPoints.length >= 3) {
-        pinDiv.style.width = '32px';
-        pinDiv.style.height = '32px';
-        pinDiv.style.boxShadow = '0 0 20px #10b981';
-        pinDiv.style.border = '3px solid white';
-        // Zostawiamy zwykły click jako fallback, ale główne to gmp-click na markerze
-        pinDiv.addEventListener('click', (e) => {
-          e.stopPropagation();
-          setIsPolygonClosed(true);
-        });
-      }
+      const dotCoords = [
+        { lat: pt[0] + latOff, lng: pt[1], altitude: 0 },
+        { lat: pt[0], lng: pt[1] + lngOff, altitude: 0 },
+        { lat: pt[0] - latOff, lng: pt[1], altitude: 0 },
+        { lat: pt[0], lng: pt[1] - lngOff, altitude: 0 },
+      ];
 
-      // Element 3D dla nowej mapy
-      const marker = new window.google.maps.maps3d.Marker3DElement({
-        position: { lat: pt[0], lng: pt[1], altitude: 0 },
+      const dotPolygon = new window.google.maps.maps3d.Polygon3DElement({
+        outerCoordinates: dotCoords,
+        fillColor: isStartPoint ? 'rgba(239, 68, 68, 1)' : 'rgba(16, 185, 129, 1)', // Pierwsza kropka zamykająca: CZERWONA, reszta ZIELONA
+        strokeColor: 'rgba(255, 255, 255, 1)',
+        strokeWidth: 3,
         altitudeMode: window.google.maps.maps3d.AltitudeMode.CLAMP_TO_GROUND
       });
-      marker.append(pinDiv);
-      
-      // W Google Maps 3D markery emitują event 'gmp-click'
+
       if (isStartPoint && !isPolygonClosed && polygonPoints.length >= 3) {
-        marker.addEventListener('gmp-click', (e) => {
+        // Powiększamy czerwoną kropkę, gdy jest gotowa do kliknięcia by zamknąć obszar!
+        const bigLatOff = 0.00007;
+        const bigLngOff = 0.00007 / Math.cos(pt[0] * Math.PI / 180);
+        dotPolygon.outerCoordinates = [
+          { lat: pt[0] + bigLatOff, lng: pt[1], altitude: 0 },
+          { lat: pt[0], lng: pt[1] + bigLngOff, altitude: 0 },
+          { lat: pt[0] - bigLatOff, lng: pt[1], altitude: 0 },
+          { lat: pt[0], lng: pt[1] - bigLngOff, altitude: 0 },
+        ];
+        
+        dotPolygon.addEventListener('gmp-click', (e) => {
           e.stopPropagation();
           setIsPolygonClosed(true);
         });
       }
 
-      map.append(marker);
-
-      markersRef.current.push(marker);
+      map.append(dotPolygon);
+      markersRef.current.push(dotPolygon);
     });
   }, [map, isCustomFramingMode, polygonPoints, isPolygonClosed]);
 
