@@ -259,7 +259,12 @@ function getShortestAngleDiff(a, b) {
 export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.8) {
   if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
 
-  const thresholdPx = snapThresholdMeters * pixelsPerMeter;
+  // Upewnijmy się, że magnes działa na odległość co najmniej 15 pikseli na ekranie,
+  // nawet przy dużym oddaleniu, gdzie 0.8 metra to za mało pikseli.
+  let thresholdPx = snapThresholdMeters * pixelsPerMeter;
+  if (thresholdPx < 15) {
+    thresholdPx = 15;
+  }
   const T_w = targetTeam.widthMeters * pixelsPerMeter;
   const T_h = targetTeam.heightMeters * pixelsPerMeter;
   const T_rot = targetTeam.rotation || 0;
@@ -513,7 +518,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 1.0) {
   if (!guideLines || guideLines.length === 0 || !targetTeam) return null;
 
-  const thresholdPx = thresholdMeters * pixelsPerMeter;
+  let thresholdPx = thresholdMeters * pixelsPerMeter;
+  if (thresholdPx < 15) {
+    thresholdPx = 15;
+  }
   const T_w = targetTeam.widthMeters * pixelsPerMeter;
   const T_h = targetTeam.heightMeters * pixelsPerMeter;
   const T_rot = targetTeam.rotation || 0;
