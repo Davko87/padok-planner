@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters, calculateHaversineDistanceMeters } from '../lib/geoUtils.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -49,6 +49,78 @@ function HomePage() {
   const polyline3DRef = useRef(null);
   const polygon3DRef = useRef(null);
   const markersRef = useRef([]);
+
+  // Moje Wydarzenia
+  const [myEvents, setMyEvents] = useState([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+
+  // Pobieranie "Moich Padoków" po zalogowaniu
+  useEffect(() => {
+    if (!currentUser) {
+      setMyEvents([]);
+      return;
+    }
+
+    const fetchMyEvents = async () => {
+      setIsLoadingEvents(true);
+      try {
+        const q = query(
+          collection(db, 'events'),
+          where('ownerId', '==', currentUser.uid),
+          orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(q);
+        const eventsList = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setMyEvents(eventsList);
+      } catch (err) {
+        console.error('Błąd podczas pobierania projektów:', err);
+      } finally {
+        setIsLoadingEvents(false);
+      }
+    };
+
+    fetchMyEvents();
+  }, [currentUser]);
+
+  // Funkcja Duplikująca Padok
+  const handleDuplicateEvent = async (event) => {
+    if (isDuplicating) return;
+    setIsDuplicating(true);
+    
+    try {
+      // 1. Kopiuj główny dokument wydarzenia
+      const newEventData = {
+        ...event,
+        name: event.name + ' - Kopia',
+        createdAt: serverTimestamp(),
+      };
+      delete newEventData.id;
+
+      const newEventRef = await addDoc(collection(db, 'events'), newEventData);
+
+      // 2. Pobierz wszystkie pojazdy (placedTeams) z oryginalnego wydarzenia
+      const teamsRef = collection(db, 'events', event.id, 'placedTeams');
+      const teamsSnapshot = await getDocs(teamsRef);
+
+      // 3. Skopiuj każdy pojazd do subkolekcji nowego wydarzenia
+      for (const teamDoc of teamsSnapshot.docs) {
+        const teamData = teamDoc.data();
+        await addDoc(collection(db, 'events', newEventRef.id, 'placedTeams'), teamData);
+      }
+
+      // 4. Przekieruj do nowego sklonowanego wydarzenia
+      navigate(`/planner/${newEventRef.id}`);
+    } catch (err) {
+      console.error('Błąd podczas duplikacji:', err);
+      alert('Nie udało się sklonować projektu.');
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
 
   // Inicjalizacja usług Google Places
   useEffect(() => {
@@ -342,7 +414,8 @@ function HomePage() {
         polygonVertices: confirmedBounds.polygonVertices || null,
         createdAt: Date.now(),
         // Nie zapisujemy już gigantycznego obrazu Esri (imageUrl)!
-        isGoogle3D: true // flaga dla nowego plannera
+        isGoogle3D: true, // flaga dla nowego plannera
+        ownerId: currentUser ? currentUser.uid : null // Zapisujemy identyfikator twórcy
       };
 
       let newId;
@@ -408,61 +481,114 @@ function HomePage() {
         )}
       </div>
 
-      {/* Wyszukiwarka */}
-      <div className="absolute top-5 left-5 z-30 w-full max-w-sm sm:max-w-md px-2 pointer-events-auto">
-        <div className="glass-panel-strong p-4 rounded-2xl shadow-2xl border-white/25 backdrop-blur-xl bg-black/60">
-          <div className="flex items-center gap-2.5 mb-3">
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-              <span className="text-base">🌍</span>
+      {/* Lewy panel (Wyszukiwarka + Moje Projekty) */}
+      <div className="absolute top-5 left-5 z-40 w-full max-w-sm sm:max-w-md pointer-events-none flex flex-col gap-4">
+        
+        {/* Wyszukiwarka */}
+        <div className="w-full px-2 pointer-events-auto">
+          <div className="glass-panel-strong p-4 rounded-2xl shadow-2xl border-white/25 backdrop-blur-xl bg-black/60">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                <span className="text-base">🌍</span>
+              </div>
+              <div>
+                <h1 className="text-xs sm:text-sm font-extrabold text-white tracking-wide">GLOBUS PADOK PLANNER (3D)</h1>
+                <p className="text-[10px] text-indigo-300/80 font-mono">Powered by Google Maps Photorealistic 3D</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xs sm:text-sm font-extrabold text-white tracking-wide">GLOBUS PADOK PLANNER (3D)</h1>
-              <p className="text-[10px] text-indigo-300/80 font-mono">Powered by Google Maps Photorealistic 3D</p>
-            </div>
-          </div>
 
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearchEnter()}
-              onFocus={() => setShowDropdown(true)}
-              placeholder="🔍 Wpisz nazwę toru, miasto..."
-              className="w-full bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium pr-24 shadow-inner"
-            />
-            <button
-              onClick={handleSearchEnter}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all shadow-md flex items-center gap-1"
-            >
-              <span>Szukaj</span><span>🚀</span>
-            </button>
-          </div>
-
-          {showDropdown && searchResults.length > 0 && (
-            <div className="mt-3 max-h-[38vh] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
-              {searchResults.map((track) => (
-                <button
-                  key={track.place_id}
-                  onClick={() => handlePlaceSelect(track.place_id, track.description)}
-                  className="w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25 shadow-sm"
-                >
-                  <div className="min-w-0 pr-2">
-                    <p className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors truncate">
-                      {track.structured_formatting?.main_text || track.description}
-                    </p>
-                    <p className="text-[10px] text-white/50 font-mono truncate">
-                      {track.structured_formatting?.secondary_text || ''}
-                    </p>
-                  </div>
-                </button>
-              ))}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchEnter()}
+                onFocus={() => setShowDropdown(true)}
+                placeholder="🔍 Wpisz nazwę toru, miasto..."
+                className="w-full bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/50 focus:outline-none focus:border-indigo-400 transition-all font-medium pr-24 shadow-inner"
+              />
+              <button
+                onClick={handleSearchEnter}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all shadow-md flex items-center gap-1"
+              >
+                <span>Szukaj</span><span>🚀</span>
+              </button>
             </div>
-          )}
+
+            {showDropdown && searchResults.length > 0 && (
+              <div className="mt-3 max-h-[38vh] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+                {searchResults.map((track) => (
+                  <button
+                    key={track.place_id}
+                    onClick={() => handlePlaceSelect(track.place_id, track.description)}
+                    className="w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/25 shadow-sm"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors truncate">
+                        {track.structured_formatting?.main_text || track.description}
+                      </p>
+                      <p className="text-[10px] text-white/50 font-mono truncate">
+                        {track.structured_formatting?.secondary_text || ''}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Panel "Moje Projekty" (Tylko dla zalogowanych, tylko gdy nie rysujemy lasso i nie jestesmy na poziomie toru) */}
+        {currentUser && !hasArrived && (
+          <div className="w-full px-2 pointer-events-auto">
+            <div className="glass-panel-strong rounded-2xl shadow-2xl border-white/20 bg-black/60 backdrop-blur-md overflow-hidden flex flex-col max-h-[50vh]">
+              <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>📁</span> Twoje Projekty
+                </h2>
+                <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">
+                  {myEvents.length}
+                </span>
+              </div>
+              
+              <div className="p-2 overflow-y-auto custom-scrollbar flex-1 space-y-2">
+                {isLoadingEvents ? (
+                  <div className="p-6 text-center text-white/50 text-xs animate-pulse">Wczytywanie projektów...</div>
+                ) : myEvents.length === 0 ? (
+                  <div className="p-6 text-center text-white/40 text-xs italic">
+                    Nie masz jeszcze żadnych zapisanych padoków.<br/>Zacznij od wyszukania toru.
+                  </div>
+                ) : (
+                  myEvents.map(event => (
+                    <div key={event.id} className="group relative bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded-xl p-3 transition-all">
+                      <button 
+                        onClick={() => navigate(`/planner/${event.id}`)}
+                        className="w-full text-left"
+                      >
+                        <h3 className="text-sm font-bold text-white mb-1 pr-10 truncate">{event.name}</h3>
+                        <p className="text-[10px] text-white/50 font-mono">
+                          Utworzono: {event.createdAt?.seconds ? new Date(event.createdAt.seconds * 1000).toLocaleDateString() : 'Brak daty'}
+                        </p>
+                      </button>
+                      
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event); }}
+                        disabled={isDuplicating}
+                        title="Zduplikuj ten układ (Szablon)"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-400/30 rounded-lg transition-all text-indigo-200 hover:text-white"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dolny Panel po przylocie */}

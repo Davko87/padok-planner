@@ -3,38 +3,6 @@ import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase
 import { db } from '../lib/firebase.js';
 import NewTeamModal from './NewTeamModal.jsx';
 
-const getTeamDimensions = (team) => {
-  if (!team.elements || team.elements.length === 0) {
-    return {
-      w: parseFloat(Number(team.width || team.widthMeters || 10).toFixed(1)),
-      h: parseFloat(Number(team.length || team.heightMeters || 10).toFixed(1))
-    };
-  }
-  
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  team.elements.forEach(el => {
-    const rad = (el.rotation || 0) * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const corners = [
-      { x: el.offsetX, y: el.offsetY },
-      { x: el.offsetX + el.width * cos, y: el.offsetY + el.width * sin },
-      { x: el.offsetX + el.width * cos - el.length * sin, y: el.offsetY + el.width * sin + el.length * cos },
-      { x: el.offsetX - el.length * sin, y: el.offsetY + el.length * cos }
-    ];
-    corners.forEach(p => {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    });
-  });
-  
-  const w = Math.max(1, Math.round((maxX - minX) * 10) / 10);
-  const h = Math.max(1, Math.round((maxY - minY) * 10) / 10);
-  return { w, h };
-};
-
 function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   const [teams, setTeams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,7 +49,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
         setIsLoading(false);
       },
       (error) => {
-        console.error('Błąd pobierania szablonów teamów:', error);
+        console.error('Błąd pobierania szablonw teamw:', error);
         // Fallback without ordering if index is missing locally or offline query requires different sorting
         const unsubscribeFallback = onSnapshot(
           collection(db, 'teams_templates'),
@@ -118,7 +86,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                   <path fillRule="evenodd" d="M1 4.75C1 3.784 1.784 3 2.75 3h14.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 17.25 17H2.75A1.75 1.75 0 0 1 1 15.25V4.75Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h14.5a.25.25 0 0 0 .25-.25V4.75a.25.25 0 0 0-.25-.25H2.75Z" clipRule="evenodd" />
                 </svg>
                 <h3 className="font-semibold text-white tracking-wide text-sm">
-                  Katalog Teamów
+                  Katalog Teamw
                 </h3>
               </div>
             )}
@@ -140,10 +108,10 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
             </button>
           </div>
 
-          {/* Collapsed view: Mini-Dock z kolorami teamów i ich skrótami (zamiast nieczytelnego pionowego napisu) */}
+          {/* Collapsed view: Mini-Dock z kolorami teamw i ich skrtami (zamiast nieczytelnego pionowego napisu) */}
           {isCollapsed ? (
             <div className="flex-1 flex flex-col items-center justify-between py-4 overflow-y-auto w-full">
-              {/* Lista kolorów teamów (można w nie kliknąć lub przeciągnąć na tor!) */}
+              {/* Lista kolorw teamw (można w nie kliknąć lub przeciągnąć na tor!) */}
               <div className="flex flex-col gap-2.5 items-center w-full px-2 my-2">
                 {teams.map((team) => {
                   const abbr = (team.name || 'TM').slice(0, 2).toUpperCase();
@@ -160,11 +128,11 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                     >
                       <span className="drop-shadow-md">{abbr}</span>
 
-                      {/* Tooltip ze szczegółami po najechaniu myszką */}
+                      {/* Tooltip ze szczegłami po najechaniu myszką */}
                       <div className="absolute right-full mr-3 px-2.5 py-1.5 rounded-lg bg-[#060a13]/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-50 flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color || '#3b82f6' }} />
                         <span>{team.name}</span>
-                        <span className="font-mono text-[10px] text-emerald-300">({getTeamDimensions(team).w}×{getTeamDimensions(team).h}m)</span>
+                        <span className="font-mono text-[10px] text-emerald-300">({team.widthMeters}{team.heightMeters}m)</span>
                       </div>
                     </div>
                   );
@@ -193,14 +161,14 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-3 text-white/40">
                     <div className="w-6 h-6 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
-                    <span className="text-xs">Ładowanie szablonów...</span>
+                    <span className="text-xs">Ładowanie szablonw...</span>
                   </div>
                 ) : teams.length === 0 ? (
                   <div className="text-center py-12 px-4 rounded-xl border border-dashed border-white/15 bg-white/5">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white/20 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
                     </svg>
-                    <p className="text-sm font-medium text-white/80 mb-1">Brak teamów</p>
+                    <p className="text-sm font-medium text-white/80 mb-1">Brak teamw</p>
                     <p className="text-xs text-white/50">Dodaj pierwszy szablon zespołu poniżej.</p>
                   </div>
                 ) : (
@@ -249,9 +217,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                               🚛
                             </span>
                           )}
-                        </div>
-                      </div>
-                      {/* Right Side: Actions & Dimensions */}
+                            {/* Right Side: Actions & Dimensions */}
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <div className="flex items-center gap-1.5">
                           <div
@@ -283,94 +249,6 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
                           </button>
                         </div>
                         <span className="text-[10px] text-emerald-300/90 font-mono tracking-wider font-semibold">
-                          {getTeamDimensions(team).w} × {getTeamDimensions(team).h} m
+                          {team.width}  {team.length} m
                         </span>
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Bottom bar with button */}
-              <div className="p-4 border-t border-white/15 bg-transparent">
-                <button
-                  onClick={() => {
-                    setEditingTeam(null);
-                    setIsModalOpen(true);
-                  }}
-                  className="glass-button-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-glass group"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 transition-transform duration-300 group-hover:rotate-90"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-                  </svg>
-                  <span>Nowy Team</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Modal dialog */}
-      <NewTeamModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingTeam(null);
-        }}
-        editingTeam={editingTeam}
-        onUpdateTemplate={onUpdateTemplate}
-      />
-      {/* Moda dla usunięcia teamu */}
-      {deletingTeam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in select-none">
-          <div className="glass-panel-strong w-full max-w-sm p-6 relative animate-slide-up shadow-2xl border-red-500/30 space-y-5">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto shadow-glass mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white tracking-wide">Usuwanie teamu</h3>
-              <p className="text-white/60 text-xs leading-relaxed">
-                Czy na pewno chcesz usunąć team <span className="text-white font-bold" style={{ color: deletingTeam.color || '#fff' }}>{deletingTeam.name}</span> z katalogu?
-                Ta operacja jest bezpowrotna, ale nie wpłynie na namioty już ułożone na padokach.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={() => setDeletingTeam(null)}
-                disabled={isDeleting}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-semibold transition-all"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={handleDeleteTeam}
-                disabled={isDeleting}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600/80 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center justify-center gap-2"
-              >
-                {isDeleting ? (
-                  <>
-                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin shrink-0" />
-                    Usuwanie...
-                  </>
-                ) : (
-                  'Usuń team'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-export default TeamCatalog;

@@ -16,25 +16,68 @@ const PRESET_COLORS = [
 ];
 
 function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = null }) {
-  const [name, setName] = useState('');
-  const [width, setWidth] = useState('10');
-  const [length, setLength] = useState('15');
-  const [color, setColor] = useState('#ef4444');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#ef4444');
+
+  const [activeElements, setActiveElements] = useState({
+    truck: { enabled: true, width: 2.5, length: 12 },
+    awning: { enabled: false, width: 4, length: 12 },
+    van: { enabled: false, width: 2.2, length: 6 },
+    tent: { enabled: false, width: 3, length: 3 },
+    car: { enabled: false, width: 2, length: 4.5 },
+    towTruck: { enabled: false, width: 2.2, length: 5 },
+  });
+
+  const VEHICLE_TYPES = [
+    { type: 'truck', label: 'Ciężarówka (naczepa)', icon: '🚛', defW: 2.5, defL: 12 },
+    { type: 'awning', label: 'Markiza (boczna)', icon: '⛺', defW: 4, defL: 12 },
+    { type: 'van', label: 'Bus serwisowy', icon: '🚐', defW: 2.2, defL: 6 },
+    { type: 'tent', label: 'Namiot wolnostojący', icon: '🎪', defW: 3, defL: 3 },
+    { type: 'car', label: 'Samochód osobowy', icon: '🚗', defW: 2, defL: 4.5 },
+    { type: 'towTruck', label: 'Laweta', icon: '🛻', defW: 2.2, defL: 5 },
+  ];
 
   useEffect(() => {
     if (editingTeam) {
       setName(editingTeam.name || '');
-      setWidth(String(editingTeam.width || editingTeam.widthMeters || '10'));
-      setLength(String(editingTeam.length || editingTeam.heightMeters || '15'));
       setColor(editingTeam.color || '#ef4444');
+      
+      // Jeżeli to stary team, konwertujemy go na ciężarówkę o tych wymiarach
+      if (editingTeam.elements && editingTeam.elements.length > 0) {
+        const newActive = {
+          truck: { enabled: false, width: 2.5, length: 12 },
+          awning: { enabled: false, width: 4, length: 12 },
+          van: { enabled: false, width: 2.2, length: 6 },
+          tent: { enabled: false, width: 3, length: 3 },
+          car: { enabled: false, width: 2, length: 4.5 },
+          towTruck: { enabled: false, width: 2.2, length: 5 },
+        };
+        editingTeam.elements.forEach(el => {
+          if (newActive[el.type]) {
+            newActive[el.type] = { enabled: true, width: el.width, length: el.length };
+          }
+        });
+        setActiveElements(newActive);
+      } else {
+        setActiveElements(prev => ({
+          ...prev,
+          truck: { enabled: true, width: editingTeam.width || 10, length: editingTeam.length || 15 }
+        }));
+      }
     } else if (isOpen) {
       setName('');
-      setWidth('10');
-      setLength('15');
       setColor('#ef4444');
       setError('');
+      setActiveElements({
+        truck: { enabled: true, width: 2.5, length: 12 },
+        awning: { enabled: false, width: 4, length: 12 },
+        van: { enabled: false, width: 2.2, length: 6 },
+        tent: { enabled: false, width: 3, length: 3 },
+        car: { enabled: false, width: 2, length: 4.5 },
+        towTruck: { enabled: false, width: 2.2, length: 5 },
+      });
     }
   }, [editingTeam, isOpen]);
 
@@ -48,21 +91,49 @@ function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = 
       setError('Podaj nazwę teamu.');
       return;
     }
-    const parsedWidth = parseFloat(width);
-    const parsedLength = parseFloat(length);
+    // Zbieramy aktywne elementy do tablicy
+    const teamElements = [];
+    let currentOffsetX = 0; 
+    
+    // Generujemy unikalne ID dla elementów jeśli tworzymy nowy team
+    Object.entries(activeElements).forEach(([type, data]) => {
+      if (data.enabled) {
+        // Jeśli edytujemy, staramy się zachować stare ID i offsety, jeśli element już istniał
+        let existingEl = null;
+        if (editingTeam && editingTeam.elements) {
+          existingEl = editingTeam.elements.find(el => el.type === type);
+        }
 
-    if (isNaN(parsedWidth) || parsedWidth <= 0 || isNaN(parsedLength) || parsedLength <= 0) {
-      setError('Szerokość i długość muszą być dodatnimi liczbami.');
+        teamElements.push({
+          id: existingEl ? existingEl.id : (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)),
+          type,
+          width: parseFloat(data.width) || 2,
+          length: parseFloat(data.length) || 2,
+          offsetX: existingEl ? existingEl.offsetX : currentOffsetX,
+          offsetY: existingEl ? existingEl.offsetY : 0,
+          rotation: existingEl ? existingEl.rotation : 0
+        });
+        currentOffsetX += (parseFloat(data.width) || 2) + 1; // 1m odstępu domyślnie
+      }
+    });
+
+    if (teamElements.length === 0) {
+      setError('Musisz wybrać co najmniej jeden element (np. Ciężarówkę).');
       return;
     }
+
+    const totalWidth = currentOffsetX > 0 ? currentOffsetX - 1 : 10;
+    const maxLength = Math.max(...teamElements.map(el => el.length));
 
     try {
       setIsSubmitting(true);
       const teamData = {
         name: name.trim(),
-        width: parsedWidth,
-        length: parsedLength,
         color,
+        width: totalWidth,
+        length: maxLength,
+        elements: teamElements,
+        isLocked: true, // Zespoły domyślnie są zablokowane i ruszają się razem!
         updatedAt: serverTimestamp(),
       };
 
@@ -140,37 +211,64 @@ function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = 
             />
           </div>
 
-          {/* Wymiary (w metrach) */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-2">
-                Szerokość [m]
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="1"
-                value={width}
-                onChange={(e) => setWidth(e.target.value)}
-                required
-                className="glass-input w-full"
-                placeholder="10"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-2">
-                Długość [m]
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="1"
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                required
-                className="glass-input w-full"
-                placeholder="15"
-              />
+          {/* Elementy Modułowe */}
+          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-3">
+              Kompozycja Zespołu (Pojazdy i Namioty)
+            </label>
+            <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-2 custom-scrollbar">
+              {VEHICLE_TYPES.map((v) => {
+                const isActive = activeElements[v.type].enabled;
+                return (
+                  <div key={v.type} className={`p-3 rounded-lg border transition-all ${isActive ? 'bg-indigo-900/30 border-indigo-500/50' : 'bg-black/30 border-white/5 hover:border-white/20'}`}>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isActive}
+                        onChange={(e) => setActiveElements(prev => ({
+                          ...prev,
+                          [v.type]: { ...prev[v.type], enabled: e.target.checked }
+                        }))}
+                        className="w-4 h-4 rounded text-indigo-500 focus:ring-indigo-500 bg-white/10 border-white/20 cursor-pointer"
+                      />
+                      <span className="text-xl">{v.icon}</span>
+                      <span className={`text-sm font-semibold flex-1 ${isActive ? 'text-white' : 'text-white/60'}`}>{v.label}</span>
+                    </div>
+                    {isActive && (
+                      <div className="mt-3 grid grid-cols-2 gap-3 pl-7">
+                        <div>
+                          <label className="text-[10px] text-white/50 uppercase">Szerokość (m)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            value={activeElements[v.type].width}
+                            onChange={(e) => setActiveElements(prev => ({
+                              ...prev,
+                              [v.type]: { ...prev[v.type], width: e.target.value }
+                            }))}
+                            className="w-full bg-black/40 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:border-indigo-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-white/50 uppercase">Długość (m)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            value={activeElements[v.type].length}
+                            onChange={(e) => setActiveElements(prev => ({
+                              ...prev,
+                              [v.type]: { ...prev[v.type], length: e.target.value }
+                            }))}
+                            className="w-full bg-black/40 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:border-indigo-400 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

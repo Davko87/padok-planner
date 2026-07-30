@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Layer, Rect, Text, Group, Transformer, Line, Circle } from 'react-konva';
+import { Stage, Layer, Rect, Text, Group, Transformer, Line, Circle, Path } from 'react-konva';
 import { Map3D } from '@vis.gl/react-google-maps';
 import DPadControls from './DPadControls.jsx';
 import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition, findCombinedMagneticSnap } from '../lib/geoUtils.js';
+import { TruckAsset, AwningAsset, VanAsset, CarAsset, TentAsset, TowTruckAsset } from './vehicles/VectorAssets.jsx';
 
 const PaddockCanvas = forwardRef(function PaddockCanvas({
   eventData,
@@ -25,7 +26,10 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const trRef = useRef(null);
+  const elTrRef = useRef(null); // Drugi transformer dla indywidualnych elementów
   const selectedNodeRefs = useRef({});
+  const elementRefs = useRef({}); // Refy do poszczególnych elementów zespołu
+  const [selectedElementId, setSelectedElementId] = useState(null);
   const lastValidCoordsRef = useRef({});
   const teamsGroupRef = useRef(null);
 
@@ -150,11 +154,14 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       if (selectedTeamId && trRef.current && selectedNodeRefs.current[selectedTeamId]) {
         trRef.current.nodes([selectedNodeRefs.current[selectedTeamId]]);
       }
+      if (selectedElementId && elTrRef.current && elementRefs.current[selectedElementId]) {
+        elTrRef.current.nodes([elementRefs.current[selectedElementId]]);
+      }
       stage.batchDraw();
 
       return finalDataUrl;
     },
-  }), [selectedTeamId]);
+  }), [selectedTeamId, selectedElementId]);
 
   // Oblicz pixelsPerMeter tak, aby szerokość obrazu w pikselach odpowiadała fizycznej szerokości w metrach z Firestore
   const imgWidth = 1024;
@@ -212,7 +219,32 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       trRef.current.nodes([]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedTeamId, placedTeams]);
+    
+    if (selectedElementId && elTrRef.current && elementRefs.current[selectedElementId]) {
+      elTrRef.current.nodes([elementRefs.current[selectedElementId]]);
+      elTrRef.current.getLayer()?.batchDraw();
+    } else if (elTrRef.current) {
+      elTrRef.current.nodes([]);
+      elTrRef.current.getLayer()?.batchDraw();
+    }
+  }, [selectedTeamId, selectedElementId, placedTeams]);
+
+  // Pomocnicza funkcja do przeliczania lokalnych wymiarów elementu na globalny obiekt
+  const getGlobalElement = useCallback((t, el) => {
+     const tRad = (t.rotation || 0) * Math.PI / 180;
+     const tCos = Math.cos(tRad);
+     const tSin = Math.sin(tRad);
+     const exPx = el.offsetX * pixelsPerMeter;
+     const eyPx = el.offsetY * pixelsPerMeter;
+     return {
+         id: el.id, // traktujemy to jako ID przy sprawdzaniu kolizji/magnesu
+         x: t.x + exPx * tCos - eyPx * tSin,
+         y: t.y + exPx * tSin + eyPx * tCos,
+         widthMeters: el.width,
+         heightMeters: el.length,
+         rotation: ((t.rotation || 0) + (el.rotation || 0)) % 360
+     };
+  }, [pixelsPerMeter]);
 
   // Pomocnicza funkcja blokująca wyjazd mapy poza krawędzie ekranu 
   // lub trzymająca w centrum (jeśli jest mniejsza niż ekran)
@@ -305,6 +337,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         x: localPoint.x - (widthMeters * pixelsPerMeter) / 2,
         y: localPoint.y - (heightMeters * pixelsPerMeter) / 2,
         rotation: 0,
+        elements: template.elements || [],
+        isLocked: template.isLocked !== undefined ? template.isLocked : true,
       };
 
       if (!allowCollisions) {
@@ -333,10 +367,11 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     }
   };
 
-  // Kliknięcie w puste tło odznacza team i linię
+  // Kliknięcie w puste tło odznacza team i linię i element
   const handleStageClick = (e) => {
     if (e.target === stageRef.current || e.target.name() === 'background-image') {
       onSelectTeam && onSelectTeam(null);
+      setSelectedElementId(null);
       setSelectedLine(null);
     }
   };
@@ -625,6 +660,81 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         y: (containerH - 1024 * initialScale) / 2,
       }));
     }
+  };
+
+  const handleToggleLock = () => {
+    if (!selectedTeamId) return;
+    const updated = placedTeams.map((t) => {
+      if (t.id === selectedTeamId) {
+        if (t.isLocked === false) {
+           // Blokujemy zespół (GRUPA) -> przeliczamy dynamicznie bounding box dla luźnych pojazdów
+           if (!t.elements || t.elements.length === 0) return { ...t, isLocked: true };
+           
+           let minX = Infinity; let maxX = -Infinity;
+           let minY = Infinity; let maxY = -Infinity;
+           
+           t.elements.forEach(el => {
+             const rad = (el.rotation || 0) * Math.PI / 180;
+             const cos = Math.cos(rad);
+             const sin = Math.sin(rad);
+             const corners = [
+               { x: el.offsetX, y: el.offsetY },
+               { x: el.offsetX + el.width * cos, y: el.offsetY + el.width * sin },
+               { x: el.offsetX + el.width * cos - el.length * sin, y: el.offsetY + el.width * sin + el.length * cos },
+               { x: el.offsetX - el.length * sin, y: el.offsetY + el.length * cos }
+             ];
+             corners.forEach(p => {
+               if (p.x < minX) minX = p.x;
+               if (p.x > maxX) maxX = p.x;
+               if (p.y < minY) minY = p.y;
+               if (p.y > maxY) maxY = p.y;
+             });
+           });
+           
+           // Usunięty margines (padding), żeby przylegało na styk do aut
+           
+           const newWidthMeters = Math.max(1, Math.round((maxX - minX) * 10) / 10);
+           const newHeightMeters = Math.max(1, Math.round((maxY - minY) * 10) / 10);
+           
+           // Przesuwamy pozycję X/Y w świecie globalnym o wyliczony lokalny offset "lewy-górny"
+           const tRad = (t.rotation || 0) * Math.PI / 180;
+           const tCos = Math.cos(tRad);
+           const tSin = Math.sin(tRad);
+           
+           // Skok lokalnego minX/minY w metrach przetłumaczony na piksele (z uwzględnieniem orientacji zespołu)
+           const shiftPxX = minX * pixelsPerMeter;
+           const shiftPxY = minY * pixelsPerMeter;
+           
+           const globalShiftX = shiftPxX * tCos - shiftPxY * tSin;
+           const globalShiftY = shiftPxX * tSin + shiftPxY * tCos;
+           
+           const newX = t.x + globalShiftX;
+           const newY = t.y + globalShiftY;
+           
+           // Ponieważ lewy-górny punkt całego kontenera (t.x, t.y) się przesunął, musimy wyrównać offset każdego elementu
+           const newElements = t.elements.map(el => ({
+             ...el,
+             offsetX: el.offsetX - minX,
+             offsetY: el.offsetY - minY
+           }));
+           
+           return {
+             ...t,
+             isLocked: true,
+             widthMeters: newWidthMeters,
+             heightMeters: newHeightMeters,
+             x: newX,
+             y: newY,
+             elements: newElements
+           };
+        } else {
+           // Odblokowujemy zespół (ROZGRUPOWANY) -> tu po prostu odpinamy ramkę, stan aut zostaje bez zmian
+           return { ...t, isLocked: false };
+        }
+      }
+      return t;
+    });
+    onUpdateTeams && onUpdateTeams(updated);
   };
 
   const selectedTeamObj = placedTeams.find((t) => t.id === selectedTeamId) || null;
@@ -925,6 +1035,19 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
             const apparentNameSize = nameFontSize * stageScale;
             const isNameVisible = apparentNameSize >= 4.5;
             const nameOpacity = Math.min(1, Math.max(0, (apparentNameSize - 4.5) / 3));
+            
+            let labelElementId = null;
+            if (team.elements && team.elements.length > 0) {
+              const priorities = ['truck', 'van', 'tent', 'towTruck', 'awning', 'car'];
+              for (const type of priorities) {
+                const el = team.elements.find(e => e.type === type);
+                if (el) {
+                  labelElementId = el.id;
+                  break;
+                }
+              }
+              if (!labelElementId) labelElementId = team.elements[0].id;
+            }
 
             return (
               <Group
@@ -935,25 +1058,39 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 x={team.x}
                 y={team.y}
                 rotation={team.rotation || 0}
-                draggable={!isDrawingLine && !isMeasuring}
+                draggable={team.isLocked !== false && !isDrawingLine && !isMeasuring}
                 onClick={(e) => {
                   if (isDrawingLine || isMeasuring) return;
-                  e.cancelBubble = true;
-                  onSelectTeam && onSelectTeam(team.id);
-                  setSelectedLine(null);
+                  if (team.isLocked === false && e.target !== e.currentTarget && e.target.parent !== e.currentTarget) {
+                     // child interaction
+                  } else {
+                    e.cancelBubble = true;
+                    onSelectTeam && onSelectTeam(team.id);
+                    setSelectedElementId(null);
+                    setSelectedLine(null);
+                  }
                 }}
                 onTap={(e) => {
                   if (isDrawingLine || isMeasuring) return;
-                  e.cancelBubble = true;
-                  onSelectTeam && onSelectTeam(team.id);
-                  setSelectedLine(null);
+                  if (team.isLocked === false && e.target !== e.currentTarget && e.target.parent !== e.currentTarget) {
+                     // child interaction
+                  } else {
+                    e.cancelBubble = true;
+                    onSelectTeam && onSelectTeam(team.id);
+                    setSelectedElementId(null);
+                    setSelectedLine(null);
+                  }
                 }}
                 onDragStart={(e) => {
+                  // ignoruj start dragu z dziecka
+                  if (e.target !== e.currentTarget) return;
                   e.cancelBubble = true;
                   onSelectTeam && onSelectTeam(team.id);
+                  setSelectedElementId(null);
                   setSelectedLine(null);
                 }}
                 onDragMove={(e) => {
+                  if (e.target !== e.currentTarget) return; // ignoruj dzieci
                   let candidate = {
                     ...team,
                     x: e.target.x(),
@@ -982,59 +1119,207 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                     setCollidingTeamIds([]);
                   }
                 }}
-                onDragEnd={(e) => handleTeamDragEnd(index, e)}
+                onDragEnd={(e) => {
+                  if (e.target !== e.currentTarget) return; // ignoruj dzieci
+                  handleTeamDragEnd(index, e);
+                }}
               >
-                {/* Prostokąt namiotu / strefy teamu */}
-                <Rect
-                  width={pxWidth}
-                  height={pxHeight}
-                  fill={isColliding ? '#ef4444EE' : team.color ? `${team.color}DF` : '#4f46e5DF'}
-                  stroke={isColliding ? '#ff0000' : isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.4)'}
-                  strokeWidth={isColliding ? Math.max(3, 4 / stageScale) : isSelected ? Math.max(2, 3 / stageScale) : Math.max(1, 1.5 / stageScale)}
-                  cornerRadius={Math.max(2, 4 * (pixelsPerMeter / 5))}
-                  shadowColor={isColliding ? '#ff0000' : isSelected ? '#10B981' : '#000000'}
-                  shadowBlur={isColliding ? 24 : isSelected ? 18 : 6}
-                  shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
-                />
+                {/* Fallback box dla widoczności kolizji / selekcji */}
+                {isSelected && team.isLocked !== false && (
+                  <Rect
+                    x={-4}
+                    y={-4}
+                    width={pxWidth + 8}
+                    height={pxHeight + 8}
+                    stroke={isColliding ? '#ff0000' : '#10B981'}
+                    strokeWidth={isColliding ? Math.max(3, 4 / stageScale) : Math.max(2, 3 / stageScale)}
+                    dash={[4,4]}
+                    cornerRadius={Math.max(2, 4 * (pixelsPerMeter / 5))}
+                  />
+                )}
 
-                {/* Nazwa teamu - w poziomie kontenera, skalowana z jego wielkością i zależna od zooma */}
-                <Text
-                  text={team.name}
-                  x={0}
-                  y={topPad}
-                  width={pxWidth}
-                  align="center"
-                  fill="#ffffff"
-                  fontSize={nameFontSize}
-                  fontFamily="Inter, system-ui, sans-serif"
-                  fontStyle="bold"
-                  wrap="none"
-                  visible={isNameVisible}
-                  opacity={nameOpacity}
-                  listening={false}
-                />
+                {/* Renderowanie elementów modułowych lub fallbacku */}
+                {team.elements && team.elements.length > 0 ? (
+                  team.elements.map(el => {
+                    const elW = el.width * pixelsPerMeter;
+                    const elH = el.length * pixelsPerMeter;
+                    const elX = el.offsetX * pixelsPerMeter;
+                    const elY = el.offsetY * pixelsPerMeter;
+                    
+                    return (
+                      <Group 
+                        key={el.id} 
+                        ref={(node) => {
+                          if (node) {
+                            elementRefs.current[el.id] = node;
+                          }
+                        }}
+                        x={elX} 
+                        y={elY} 
+                        rotation={el.rotation || 0}
+                        draggable={team.isLocked === false && !isDrawingLine && !isMeasuring}
+                        onDragMove={(e) => {
+                           if (team.isLocked !== false) return;
+                           e.cancelBubble = true; // nie powiadamiaj rodzica (team)
+                        }}
+                        onDragEnd={(e) => {
+                           if (team.isLocked !== false) return;
+                           e.cancelBubble = true; // nie powiadamiaj rodzica
+                           
+                           let newOffsetX = e.target.x() / pixelsPerMeter;
+                           let newOffsetY = e.target.y() / pixelsPerMeter;
+                           let newRot = el.rotation || 0;
+                           
+                           if (enableMagnet) {
+                             const candidateGlobal = getGlobalElement(team, { ...el, offsetX: newOffsetX, offsetY: newOffsetY });
+                             
+                             const pseudoAllTeams = [];
+                             placedTeams.forEach(pt => {
+                               if (pt.elements) {
+                                 pt.elements.forEach(pel => {
+                                    if (pt.id === team.id && pel.id === el.id) return; // skip self
+                                    pseudoAllTeams.push(getGlobalElement(pt, pel));
+                                 });
+                               }
+                             });
+                             
+                             const snapped = findCombinedMagneticSnap(candidateGlobal, pseudoAllTeams, guideLines, pixelsPerMeter, 0.8);
+                             if (snapped) {
+                               const snappedLocalRot = snapped.rotation !== undefined ? (snapped.rotation - (team.rotation || 0) + 360) % 360 : el.rotation;
+                               
+                               const dx = snapped.x - team.x;
+                               const dy = snapped.y - team.y;
+                               const tRad = (team.rotation || 0) * Math.PI / 180;
+                               const tCos = Math.cos(tRad);
+                               const tSin = Math.sin(tRad);
+                               
+                               const exPx = dx * tCos + dy * tSin;
+                               const eyPx = -dx * tSin + dy * tCos;
+                               
+                               newOffsetX = exPx / pixelsPerMeter;
+                               newOffsetY = eyPx / pixelsPerMeter;
+                               newRot = snappedLocalRot;
+                               
+                               e.target.x(newOffsetX * pixelsPerMeter);
+                               e.target.y(newOffsetY * pixelsPerMeter);
+                               e.target.rotation(newRot);
+                             }
+                           }
+                           
+                           const updated = placedTeams.map((t) => {
+                             if (t.id === team.id) {
+                               return {
+                                 ...t,
+                                 elements: t.elements.map(eItem => 
+                                   eItem.id === el.id ? { ...eItem, offsetX: newOffsetX, offsetY: newOffsetY, rotation: newRot } : eItem
+                                 )
+                               };
+                             }
+                             return t;
+                           });
+                           onUpdateTeams && onUpdateTeams(updated);
+                        }}
+                        onClick={(e) => {
+                           if (team.isLocked === false) {
+                              e.cancelBubble = true;
+                              onSelectTeam && onSelectTeam(team.id);
+                              setSelectedElementId(el.id);
+                           }
+                        }}
+                        onTap={(e) => {
+                           if (team.isLocked === false) {
+                              e.cancelBubble = true;
+                              onSelectTeam && onSelectTeam(team.id);
+                              setSelectedElementId(el.id);
+                           }
+                        }}
+                        onTransformEnd={(e) => {
+                          const node = e.target;
+                          const newRotation = node.rotation();
+                          const updated = placedTeams.map((t) => {
+                            if (t.id === team.id) {
+                              return {
+                                ...t,
+                                elements: t.elements.map(eItem => 
+                                  eItem.id === el.id ? { ...eItem, rotation: newRotation } : eItem
+                                )
+                              };
+                            }
+                            return t;
+                          });
+                          onUpdateTeams && onUpdateTeams(updated);
+                        }}
+                      >
+                        {el.type === 'truck' && <TruckAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'awning' && <AwningAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'van' && <VanAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'car' && <CarAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'tent' && <TentAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'towTruck' && <TowTruckAsset color={team.color} width={elW} height={elH} />}
 
-                {/* Wymiary fizyczne w metrach - na dole prostokąta, w tej pozycji jak są */}
-                <Text
-                  text={dimText}
-                  x={0}
-                  y={pxHeight - dimFontSize - botPad}
-                  width={pxWidth}
-                  align="center"
-                  fill="rgba(255, 255, 255, 0.9)"
-                  fontSize={dimFontSize}
-                  fontFamily="monospace"
-                  fontStyle="bold"
-                  wrap="none"
-                  listening={false}
-                />
+                        {el.id === labelElementId && (
+                          <Text
+                            text={team.name}
+                            x={elW}
+                            y={0}
+                            width={elH}
+                            height={elW}
+                            rotation={90}
+                            align="center"
+                            verticalAlign="middle"
+                            fill="rgba(255, 255, 255, 0.95)"
+                            fontSize={Math.max(4, elW * 0.55)}
+                            fontFamily="Inter, system-ui, sans-serif"
+                            fontStyle="bold"
+                            wrap="none"
+                            listening={false}
+                            opacity={nameOpacity}
+                            visible={isNameVisible}
+                          />
+                        )}
+                      </Group>
+                    );
+                  })
+                ) : (
+                  /* Stary prostokątny rendering (Fallback) */
+                  <Rect
+                    width={pxWidth}
+                    height={pxHeight}
+                    fill={isColliding ? '#ef4444EE' : team.color ? `${team.color}DF` : '#4f46e5DF'}
+                    stroke={isColliding ? '#ff0000' : isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.4)'}
+                    strokeWidth={isColliding ? Math.max(3, 4 / stageScale) : isSelected ? Math.max(2, 3 / stageScale) : Math.max(1, 1.5 / stageScale)}
+                    cornerRadius={Math.max(2, 4 * (pixelsPerMeter / 5))}
+                    shadowColor={isColliding ? '#ff0000' : isSelected ? '#10B981' : '#000000'}
+                    shadowBlur={isColliding ? 24 : isSelected ? 18 : 6}
+                    shadowOpacity={isColliding || isSelected ? 0.9 : 0.5}
+                  />
+                )}
+
+                {/* Nazwa teamu jako fallback (jeśli nie ma przypisanego elementu, np. brak elementów) */}
+                {!labelElementId && (
+                  <Text
+                    text={team.name}
+                    x={0}
+                    y={topPad}
+                    width={pxWidth}
+                    align="center"
+                    fill="#ffffff"
+                    fontSize={nameFontSize}
+                    fontFamily="Inter, system-ui, sans-serif"
+                    fontStyle="bold"
+                    wrap="none"
+                    visible={isNameVisible && team.isLocked !== false}
+                    opacity={nameOpacity}
+                    listening={false}
+                  />
+                )}
               </Group>
             );
           })}
 
           {/* ZADANIE 6: react-konva Transformer z obracaniem i skokiem co 0.5m w świecie fizycznym */}
           {/* react-konva Transformer z obracaniem z rogów (wyłączona opcja zmiany wymiarów, sztywny metraż!) */}
-          {selectedTeamId && (
+          {selectedTeamId && !selectedElementId && (
             <Transformer
               ref={trRef}
               resizeEnabled={false} // Całkowita blokada skalowania na płótnie!
@@ -1049,6 +1334,24 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               borderStrokeWidth={Math.max(1.5, 2.5 / stageScale)}
               borderDash={[4, 4]}
               onTransformEnd={handleTransformEnd}
+            />
+          )}
+
+          {/* Transformer dla pojedynczego pojazdu w rozgrupowanym zespole */}
+          {selectedTeamId && selectedElementId && (
+            <Transformer
+              ref={elTrRef}
+              resizeEnabled={false} 
+              rotateEnabled={true}  
+              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']} 
+              rotationSnaps={[]} 
+              anchorStroke="#6366f1"
+              anchorFill="#ffffff"
+              anchorSize={8}
+              borderStroke="#6366f1"
+              borderStrokeWidth={2}
+              borderDash={[4, 4]}
+              boundBoxFunc={(oldBox, newBox) => newBox}
             />
           )}
           </Group>
@@ -1092,6 +1395,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         onRotate={handleDPadRotate}
         onResize={handleDPadResize}
         onDeselect={() => onSelectTeam && onSelectTeam(null)}
+        onToggleLock={handleToggleLock}
         pixelsPerMeter={pixelsPerMeter}
       />
 

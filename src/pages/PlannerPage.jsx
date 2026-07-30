@@ -322,6 +322,8 @@ function PlannerPage() {
       x: targetX - (widthMeters * ppm) / 2,
       y: targetY - (heightMeters * ppm) / 2,
       rotation: 0,
+      elements: teamTemplate.elements || [],
+      isLocked: teamTemplate.isLocked !== undefined ? teamTemplate.isLocked : true,
     };
 
     const isDuplicate = placedTeams.some(
@@ -378,6 +380,8 @@ function PlannerPage() {
         x: targetX - (widthMeters * currentPpm) / 2,
         y: targetY - (heightMeters * currentPpm) / 2,
         rotation: 0,
+        elements: template.elements || [],
+        isLocked: template.isLocked !== undefined ? template.isLocked : true,
       };
 
       if (!allowCollisions) {
@@ -409,6 +413,8 @@ function PlannerPage() {
             widthMeters: updatedTemplate.width || t.widthMeters,
             heightMeters: updatedTemplate.length || t.heightMeters,
             color: updatedTemplate.color || t.color,
+            elements: updatedTemplate.elements || t.elements,
+            isLocked: updatedTemplate.isLocked !== undefined ? updatedTemplate.isLocked : t.isLocked,
           };
         }
         return t;
@@ -496,6 +502,29 @@ function PlannerPage() {
     }
   };
 
+  const handleUpdateTeams = (newTeams) => {
+    // Sprawdzamy czy układ elementów w zespole uległ zmianie (np. przez D-Pad na płótnie)
+    // Jeśli tak, aktualizujemy szablon w katalogu (teams_templates)
+    newTeams.forEach(newTeam => {
+      const oldTeam = placedTeams.find(t => t.id === newTeam.id);
+      if (oldTeam && oldTeam.templateId) {
+        const oldElementsStr = JSON.stringify(oldTeam.elements || []);
+        const newElementsStr = JSON.stringify(newTeam.elements || []);
+        if (oldElementsStr !== newElementsStr) {
+          try {
+            updateDoc(doc(db, 'teams_templates', newTeam.templateId), {
+              elements: newTeam.elements,
+              updatedAt: serverTimestamp()
+            }).catch(console.error);
+          } catch (e) {
+            console.error('Błąd przy aktualizacji szablonu', e);
+          }
+        }
+      }
+    });
+    setPlacedTeams(newTeams);
+  };
+
   return (
     <div className="relative h-full w-full flex items-center justify-center overflow-hidden bg-slate-950">
       {/* Centralna Scena PaddockCanvas (Zadania 5 i 6) */}
@@ -503,7 +532,7 @@ function PlannerPage() {
         ref={canvasRef}
         eventData={eventData}
         placedTeams={placedTeams}
-        onUpdateTeams={setPlacedTeams}
+        onUpdateTeams={handleUpdateTeams}
         guideLines={guideLines}
         onUpdateGuideLines={setGuideLines}
         measurements={measurements}

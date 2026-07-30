@@ -168,8 +168,8 @@ export function checkOrientedRectsCollide(rectA, rectB) {
       if (proj > maxB) maxB = proj;
     }
 
-    // Jeśli rzuty na którąkolwiek oś się nie przecinają -> brak kolizji (z tolerancją 2.0px na idealny styk)
-    if (maxA <= minB + 2.0 || maxB <= minA + 2.0) {
+    // Jeśli rzuty na którąkolwiek oś się nie przecinają -> brak kolizji (z bardzo drobną tolerancją 0.1px na błędy zmiennoprzecinkowe)
+    if (maxA <= minB + 0.1 || maxB <= minA + 0.1) {
       return false;
     }
   }
@@ -356,7 +356,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
       if (Math.abs(proj_u - u_val) < thresholdPx * 1.5) {
         let v_val = proj_v;
         for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 1.5) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.3) {
             v_val = av;
             break;
           }
@@ -370,7 +370,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
       if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
         let u_val = proj_u;
         for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 1.5) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
             u_val = au;
             break;
           }
@@ -381,10 +381,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 3. Wyrównanie wzdłuż krawędzi bez przylegania do ściany (gdy oba są obok siebie na tej samej linii)
     for (const u_val of [align_u_left, align_u_right]) {
-      if (Math.abs(proj_u - u_val) < thresholdPx * 1.2) {
+      if (Math.abs(proj_u - u_val) < thresholdPx * 0.8) {
         let v_val = proj_v;
         for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 1.5) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.3) {
             v_val = av;
             break;
           }
@@ -395,10 +395,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 4. Wyrównanie wzdłuż krawędzi w pionie bez przylegania do ściany
     for (const v_val of [align_v_top, align_v_bot]) {
-      if (Math.abs(proj_v - v_val) < thresholdPx * 1.2) {
+      if (Math.abs(proj_v - v_val) < thresholdPx * 0.8) {
         let u_val = proj_u;
         for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 1.5) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
             u_val = au;
             break;
           }
@@ -590,7 +590,7 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
         let u_val = proj_u;
         // Opcjonalne wyrównanie do początku (0) lub końca (len) linii
         for (const au of [-u_min_rel, len - u_max_rel]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 1.2) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
             u_val = au;
             break;
           }
