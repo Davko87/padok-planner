@@ -194,7 +194,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // Wyśrodkuj mapę po pierwszym załadowaniu obrazu
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && eventData) {
       const containerW = containerRef.current.offsetWidth;
       const containerH = containerRef.current.offsetHeight;
 
@@ -208,7 +208,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         y: (containerH - 1024 * initialScale) / 2,
       });
     }
-  }, [eventData]);
+  }, [eventData?.id, eventData?.widthMeters, eventData?.heightMeters]);
 
   // ZADANIE 6: Podepnij Transformer z react-konva pod zaznaczony węzeł po zmianie zaznaczenia
   useEffect(() => {
