@@ -1171,7 +1171,31 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                         draggable={team.isLocked === false && !isDrawingLine && !isMeasuring}
                         onDragMove={(e) => {
                            if (team.isLocked !== false) return;
-                           e.cancelBubble = true; // nie powiadamiaj rodzica (team)
+                           e.cancelBubble = true;
+                           
+                           // Sprawdź kolizję z innymi elementami w tym samym teamie
+                           if (!allowCollisions && team.elements && team.elements.length > 1) {
+                             const newOffsetX = e.target.x() / pixelsPerMeter;
+                             const newOffsetY = e.target.y() / pixelsPerMeter;
+                             const candidateGlobal = getGlobalElement(team, { ...el, offsetX: newOffsetX, offsetY: newOffsetY });
+                             
+                             const siblingElements = [];
+                             team.elements.forEach(pel => {
+                               if (pel.id === el.id) return;
+                               siblingElements.push(getGlobalElement(team, pel));
+                             });
+                             
+                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id);
+                             if (collidedElId) {
+                               // Przywróć ostatnią prawidłową pozycję
+                               const lastValid = lastValidCoordsRef.current[`el_${el.id}`] || { x: el.offsetX * pixelsPerMeter, y: el.offsetY * pixelsPerMeter };
+                               e.target.x(lastValid.x);
+                               e.target.y(lastValid.y);
+                               return;
+                             }
+                             // Zapisz ostatnią prawidłową pozycję
+                             lastValidCoordsRef.current[`el_${el.id}`] = { x: e.target.x(), y: e.target.y() };
+                           }
                         }}
                         onDragEnd={(e) => {
                            if (team.isLocked !== false) return;
@@ -1216,6 +1240,28 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                                e.target.rotation(newRot);
                              }
                            }
+                           
+                           // Sprawdź kolizję z innymi elementami w teamie po snappingu
+                           if (!allowCollisions && team.elements && team.elements.length > 1) {
+                             const candidateGlobal = getGlobalElement(team, { ...el, offsetX: newOffsetX, offsetY: newOffsetY, rotation: newRot });
+                             const siblingElements = [];
+                             team.elements.forEach(pel => {
+                               if (pel.id === el.id) return;
+                               siblingElements.push(getGlobalElement(team, pel));
+                             });
+                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id);
+                             if (collidedElId) {
+                               // Przywróć oryginalną pozycję
+                               e.target.x(el.offsetX * pixelsPerMeter);
+                               e.target.y(el.offsetY * pixelsPerMeter);
+                               e.target.rotation(el.rotation || 0);
+                               setCollisionToast('Element nie może nachodzić na inny element w teamie!');
+                               return;
+                             }
+                           }
+                           
+                           // Zapisz prawidłową pozycję
+                           lastValidCoordsRef.current[`el_${el.id}`] = { x: newOffsetX * pixelsPerMeter, y: newOffsetY * pixelsPerMeter };
                            
                            const updated = placedTeams.map((t) => {
                              if (t.id === team.id) {
