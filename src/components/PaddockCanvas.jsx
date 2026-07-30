@@ -345,7 +345,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
       }
       if (enableMagnet) {
-        const snapped = findCombinedMagneticSnap(newTeamNode, placedTeams, guideLines, pixelsPerMeter, 0.8);
+        const snapped = findCombinedMagneticSnap(newTeamNode, placedTeams, guideLines, pixelsPerMeter);
         if (snapped) {
           newTeamNode = { ...newTeamNode, x: snapped.x, y: snapped.y, rotation: snapped.rotation !== undefined ? snapped.rotation : newTeamNode.rotation };
         }
@@ -451,7 +451,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -508,7 +508,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -556,7 +556,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     };
 
     if (enableMagnet) {
-      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
+      const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter);
       if (snapped) {
         candidate = {
           ...candidate,
@@ -1097,7 +1097,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                     y: e.target.y(),
                   };
                   if (enableMagnet) {
-                    const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter, 0.8);
+                    const snapped = findCombinedMagneticSnap(candidate, placedTeams, guideLines, pixelsPerMeter);
                     if (snapped) {
                       candidate = {
                         ...candidate,
@@ -1183,7 +1183,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                                }
                              });
                              
-                             const snapped = findCombinedMagneticSnap(candidateGlobal, pseudoAllTeams, guideLines, pixelsPerMeter, 0.8);
+                             const snapped = findCombinedMagneticSnap(candidateGlobal, pseudoAllTeams, guideLines, pixelsPerMeter);
                              if (snapped) {
                                const snappedLocalRot = snapped.rotation !== undefined ? (snapped.rotation - (team.rotation || 0) + 360) % 360 : el.rotation;
                                

@@ -256,21 +256,16 @@ function getShortestAngleDiff(a, b) {
  * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 0.8m)
  * @returns {object|null} Zwraca { x, y, rotation, snappedToId } lub null, jeśli brakuje bliskich sąsiadów
  */
-export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.8) {
+export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.15) {
   if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
 
-  // Upewnijmy się, że magnes działa na odległość co najmniej 15 pikseli na ekranie,
-  // nawet przy dużym oddaleniu, gdzie 0.8 metra to za mało pikseli.
-  let thresholdPx = snapThresholdMeters * pixelsPerMeter;
-  if (thresholdPx < 15) {
-    thresholdPx = 15;
-  }
+  const thresholdPx = snapThresholdMeters * pixelsPerMeter;
   const T_w = targetTeam.widthMeters * pixelsPerMeter;
   const T_h = targetTeam.heightMeters * pixelsPerMeter;
   const T_rot = targetTeam.rotation || 0;
 
   let bestCandidate = null;
-  let minDistance = thresholdPx * 1.5;
+  let minDistance = thresholdPx;
 
   for (const other of allTeams) {
     if (other.id === targetTeam.id) continue;
@@ -356,10 +351,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 1. Dociągnięcie do PRAWEJ lub LEWEJ ściany (z jednoczesnym wyrównaniem lub dociągnięciem góra/dół)
     for (const u_val of [cand_u_right, cand_u_left]) {
-      if (Math.abs(proj_u - u_val) < thresholdPx * 1.5) {
+      if (Math.abs(proj_u - u_val) < thresholdPx) {
         let v_val = proj_v;
         for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 0.8) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.5) {
             v_val = av;
             break;
           }
@@ -370,10 +365,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 2. Dociągnięcie do DOLNEJ lub GÓRNEJ ściany (z jednoczesnym wyrównaniem lub dociągnięciem lewo/prawo)
     for (const v_val of [cand_v_bottom, cand_v_top]) {
-      if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
+      if (Math.abs(proj_v - v_val) < thresholdPx) {
         let u_val = proj_u;
         for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.5) {
             u_val = au;
             break;
           }
@@ -384,10 +379,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 3. Wyrównanie wzdłuż krawędzi bez przylegania do ściany (gdy oba są obok siebie na tej samej linii)
     for (const u_val of [align_u_left, align_u_right]) {
-      if (Math.abs(proj_u - u_val) < thresholdPx * 0.8) {
+      if (Math.abs(proj_u - u_val) < thresholdPx * 0.5) {
         let v_val = proj_v;
         for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 0.8) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.5) {
             v_val = av;
             break;
           }
@@ -398,10 +393,10 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
 
     // 4. Wyrównanie wzdłuż krawędzi w pionie bez przylegania do ściany
     for (const v_val of [align_v_top, align_v_bot]) {
-      if (Math.abs(proj_v - v_val) < thresholdPx * 0.8) {
+      if (Math.abs(proj_v - v_val) < thresholdPx * 0.5) {
         let u_val = proj_u;
         for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.5) {
             u_val = au;
             break;
           }
@@ -481,7 +476,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
       const cand_v_list = [O_h - v_min_rel, -v_max_rel, -v_min_rel, O_h - v_max_rel];
 
       for (const cu of cand_u_list) {
-        if (Math.abs(o_proj_u - cu) < thresholdPx * 1.5) {
+        if (Math.abs(o_proj_u - cu) < thresholdPx) {
           const testX = O_x + cu * u.x + o_proj_v * v.x;
           const testY = O_y + cu * u.y + o_proj_v * v.y;
           const testNode = { ...targetTeam, x: testX, y: testY, rotation: bestCandidate.rotation };
@@ -494,7 +489,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
       }
 
       for (const cv of cand_v_list) {
-        if (Math.abs(o_proj_v - cv) < thresholdPx * 1.5) {
+        if (Math.abs(o_proj_v - cv) < thresholdPx) {
           const testX = O_x + o_proj_u * u.x + cv * v.x;
           const testY = O_y + o_proj_u * u.y + cv * v.y;
           const testNode = { ...targetTeam, x: testX, y: testY, rotation: bestCandidate.rotation };
@@ -515,19 +510,16 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
  * ZADANIE: Przyciąganie namiotu do narysowanych linii pomocniczych / krawężników.
  * Alignuje obrót do linii oraz wyrównuje krawędź prostokąta idealnie do linii krawężnika (jak kontener do kontenera).
  */
-export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 1.0) {
+export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 0.2) {
   if (!guideLines || guideLines.length === 0 || !targetTeam) return null;
 
-  let thresholdPx = thresholdMeters * pixelsPerMeter;
-  if (thresholdPx < 15) {
-    thresholdPx = 15;
-  }
+  const thresholdPx = thresholdMeters * pixelsPerMeter;
   const T_w = targetTeam.widthMeters * pixelsPerMeter;
   const T_h = targetTeam.heightMeters * pixelsPerMeter;
   const T_rot = targetTeam.rotation || 0;
 
   let bestCandidate = null;
-  let minDistance = Infinity;
+  let minDistance = thresholdPx;
 
   for (const line of guideLines) {
     const dx = line.x2 - line.x1;
@@ -592,11 +584,11 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
     const cand_v_list = [-v_min_rel, -v_max_rel];
 
     for (const v_val of cand_v_list) {
-      if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
+      if (Math.abs(proj_v - v_val) < thresholdPx) {
         let u_val = proj_u;
         // Opcjonalne wyrównanie do początku (0) lub końca (len) linii
         for (const au of [-u_min_rel, len - u_max_rel]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.5) {
             u_val = au;
             break;
           }
@@ -626,9 +618,9 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
   return bestCandidate;
 }
 
-export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.8) {
+export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.15) {
   const neighborSnap = findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, thresholdMeters);
-  const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 1.5);
+  const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 1.2);
 
   if (neighborSnap && lineSnap) {
     const distN = Math.hypot(neighborSnap.x - targetTeam.x, neighborSnap.y - targetTeam.y);
