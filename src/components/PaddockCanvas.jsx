@@ -241,7 +241,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
          x: t.x + exPx * tCos - eyPx * tSin,
          y: t.y + exPx * tSin + eyPx * tCos,
          widthMeters: el.width,
-         heightMeters: el.length,
+         heightMeters: el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length),
          rotation: ((t.rotation || 0) + (el.rotation || 0)) % 360
      };
   }, [pixelsPerMeter]);
@@ -677,11 +677,12 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
              const rad = (el.rotation || 0) * Math.PI / 180;
              const cos = Math.cos(rad);
              const sin = Math.sin(rad);
+             const actualLength = el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length);
              const corners = [
                { x: el.offsetX, y: el.offsetY },
                { x: el.offsetX + el.width * cos, y: el.offsetY + el.width * sin },
-               { x: el.offsetX + el.width * cos - el.length * sin, y: el.offsetY + el.width * sin + el.length * cos },
-               { x: el.offsetX - el.length * sin, y: el.offsetY + el.length * cos }
+               { x: el.offsetX + el.width * cos - actualLength * sin, y: el.offsetY + el.width * sin + actualLength * cos },
+               { x: el.offsetX - actualLength * sin, y: el.offsetY + actualLength * cos }
              ];
              corners.forEach(p => {
                if (p.x < minX) minX = p.x;
@@ -1020,8 +1021,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 {/* Renderowanie elementów modułowych lub fallbacku */}
                 {team.elements && team.elements.length > 0 ? (
                   team.elements.map(el => {
+                    const actualLength = el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length);
                     const elW = el.width * pixelsPerMeter;
-                    const elH = el.length * pixelsPerMeter;
+                    const elH = actualLength * pixelsPerMeter;
                     const elX = el.offsetX * pixelsPerMeter;
                     const elY = el.offsetY * pixelsPerMeter;
                     
