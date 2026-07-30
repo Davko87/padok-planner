@@ -1,8 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+    
+    // Główna kolekcja wydarzeń/torów (otwarta do odczytu, zapis dla gości do głównego układu)
+    match /events/{eventId} {
       allow read, write: if true;
+      
+      // Podkolekcja układów (layouts) - zablokowana! Tylko właściciel ma dostęp
+      match /layouts/{userId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Kolekcja użytkowników - użytkownik widzi i edytuje tylko swój własny profil
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
