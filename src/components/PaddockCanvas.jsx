@@ -872,138 +872,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               />
             )}
 
-            {/* 1.6 Linie pomiarowe (linijka odległości) */}
-            {(measurements || []).map((m) => {
-              const isSelected = selectedLine && selectedLine.id === m.id && selectedLine.type === 'measure';
-              const dx = m.x2 - m.x1;
-              const dy = m.y2 - m.y1;
-              const distPx = Math.hypot(dx, dy);
-              if (distPx < 1) return null;
-              const distM = (distPx / pixelsPerMeter);
-              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
-              const midX = (m.x1 + m.x2) / 2;
-              const midY = (m.y1 + m.y2) / 2;
-              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
-              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
-              const badgeH = 22 / Math.max(0.4, stageScale);
-
-              return (
-                <Group key={m.id}>
-                  {/* Szeroka niewidoczna linia do kliknięcia/zaznaczenia */}
-                  <Line
-                    points={[m.x1, m.y1, m.x2, m.y2]}
-                    stroke="rgba(239, 68, 68, 0.4)"
-                    strokeWidth={20 / stageScale}
-                    opacity={isSelected ? 1 : 0}
-                    lineCap="round"
-                    cursor="pointer"
-                    onClick={(e) => {
-                      e.cancelBubble = true;
-                      if (onSelectTeam) onSelectTeam(null);
-                      setSelectedLine({ id: m.id, type: 'measure' });
-                    }}
-                    onTap={(e) => {
-                      e.cancelBubble = true;
-                      if (onSelectTeam) onSelectTeam(null);
-                      setSelectedLine({ id: m.id, type: 'measure' });
-                    }}
-                  />
-                  <Line
-                    points={[m.x1, m.y1, m.x2, m.y2]}
-                    stroke={isSelected ? '#ef4444' : '#38bdf8'}
-                    strokeWidth={isSelected ? 4 / Math.max(0.4, stageScale) : 2.5 / Math.max(0.4, stageScale)}
-                    dash={[6, 4]}
-                    lineCap="round"
-                    listening={false}
-                  />
-                  <Circle x={m.x1} y={m.y1} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
-                  <Circle x={m.x2} y={m.y2} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
-                  <Group x={midX} y={midY} rotation={angleDeg} listening={false}>
-                    <Rect
-                      x={-badgeW / 2}
-                      y={-badgeH / 2}
-                      width={badgeW}
-                      height={badgeH}
-                      fill={isSelected ? '#dc2626' : '#0284c7'}
-                      stroke="#ffffff"
-                      strokeWidth={1 / Math.max(0.4, stageScale)}
-                      cornerRadius={6 / Math.max(0.4, stageScale)}
-                      shadowColor="#000000"
-                      shadowBlur={4}
-                      shadowOpacity={0.5}
-                    />
-                    <Text
-                      text={distText}
-                      x={-badgeW / 2}
-                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
-                      width={badgeW}
-                      align="center"
-                      fill="#ffffff"
-                      fontSize={11 / Math.max(0.4, stageScale)}
-                      fontFamily="monospace"
-                      fontStyle="bold"
-                    />
-                  </Group>
-                </Group>
-              );
-            })}
-
-            {/* Podgląd aktualnie rysowanej linii pomiarowej */}
-            {currentMeasureLine && (() => {
-              const dx = currentMeasureLine.x2 - currentMeasureLine.x1;
-              const dy = currentMeasureLine.y2 - currentMeasureLine.y1;
-              const distPx = Math.hypot(dx, dy);
-              if (distPx < 1) return null;
-              const distM = (distPx / pixelsPerMeter);
-              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
-              const midX = (currentMeasureLine.x1 + currentMeasureLine.x2) / 2;
-              const midY = (currentMeasureLine.y1 + currentMeasureLine.y2) / 2;
-              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
-              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
-              const badgeH = 22 / Math.max(0.4, stageScale);
-
-              return (
-                <Group>
-                  <Line
-                    points={[currentMeasureLine.x1, currentMeasureLine.y1, currentMeasureLine.x2, currentMeasureLine.y2]}
-                    stroke="#38bdf8"
-                    strokeWidth={2.5 / Math.max(0.4, stageScale)}
-                    dash={[4, 4]}
-                    lineCap="round"
-                  />
-                  <Circle x={currentMeasureLine.x1} y={currentMeasureLine.y1} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
-                  <Circle x={currentMeasureLine.x2} y={currentMeasureLine.y2} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
-                  <Group x={midX} y={midY} rotation={angleDeg}>
-                    <Rect
-                      x={-badgeW / 2}
-                      y={-badgeH / 2}
-                      width={badgeW}
-                      height={badgeH}
-                      fill="#0ea5e9"
-                      stroke="#ffffff"
-                      strokeWidth={1 / Math.max(0.4, stageScale)}
-                      cornerRadius={6 / Math.max(0.4, stageScale)}
-                      shadowColor="#000000"
-                      shadowBlur={4}
-                      shadowOpacity={0.5}
-                    />
-                    <Text
-                      text={distText}
-                      x={-badgeW / 2}
-                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
-                      width={badgeW}
-                      align="center"
-                      fill="#ffffff"
-                      fontSize={11 / Math.max(0.4, stageScale)}
-                      fontFamily="monospace"
-                      fontStyle="bold"
-                    />
-                  </Group>
-                </Group>
-              );
-            })()}
 
             {/* 2. Zespoły umieszczone na torze (Team Nodes) */}
           {placedTeams.map((team, index) => {
@@ -1373,6 +1241,138 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               </Group>
             );
           })}
+          {/* 1.6 Linie pomiarowe (linijka odległości) - Przeniesione na sam dół (z-index na wierzchu) */}
+            {(measurements || []).map((m) => {
+              const isSelected = selectedLine && selectedLine.id === m.id && selectedLine.type === 'measure';
+              const dx = m.x2 - m.x1;
+              const dy = m.y2 - m.y1;
+              const distPx = Math.hypot(dx, dy);
+              if (distPx < 1) return null;
+              const distM = (distPx / pixelsPerMeter);
+              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
+              const midX = (m.x1 + m.x2) / 2;
+              const midY = (m.y1 + m.y2) / 2;
+              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
+              const badgeH = 22 / Math.max(0.4, stageScale);
+
+              return (
+                <Group key={m.id}>
+                  {/* Szeroka niewidoczna linia do kliknięcia/zaznaczenia */}
+                  <Line
+                    points={[m.x1, m.y1, m.x2, m.y2]}
+                    stroke="rgba(239, 68, 68, 0.4)"
+                    strokeWidth={20 / stageScale}
+                    opacity={isSelected ? 1 : 0}
+                    lineCap="round"
+                    cursor="pointer"
+                    onClick={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: m.id, type: 'measure' });
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true;
+                      if (onSelectTeam) onSelectTeam(null);
+                      setSelectedLine({ id: m.id, type: 'measure' });
+                    }}
+                  />
+                  <Line
+                    points={[m.x1, m.y1, m.x2, m.y2]}
+                    stroke={isSelected ? '#ef4444' : '#38bdf8'}
+                    strokeWidth={isSelected ? 4 / Math.max(0.4, stageScale) : 2.5 / Math.max(0.4, stageScale)}
+                    dash={[6, 4]}
+                    lineCap="round"
+                    listening={false}
+                  />
+                  <Circle x={m.x1} y={m.y1} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
+                  <Circle x={m.x2} y={m.y2} radius={4 / Math.max(0.4, stageScale)} fill={isSelected ? '#ef4444' : '#38bdf8'} listening={false} />
+                  <Group x={midX} y={midY} rotation={angleDeg} listening={false}>
+                    <Rect
+                      x={-badgeW / 2}
+                      y={-badgeH / 2}
+                      width={badgeW}
+                      height={badgeH}
+                      fill={isSelected ? '#dc2626' : '#0284c7'}
+                      stroke="#ffffff"
+                      strokeWidth={1 / Math.max(0.4, stageScale)}
+                      cornerRadius={6 / Math.max(0.4, stageScale)}
+                      shadowColor="#000000"
+                      shadowBlur={4}
+                      shadowOpacity={0.5}
+                    />
+                    <Text
+                      text={distText}
+                      x={-badgeW / 2}
+                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
+                      width={badgeW}
+                      align="center"
+                      fill="#ffffff"
+                      fontSize={11 / Math.max(0.4, stageScale)}
+                      fontFamily="monospace"
+                      fontStyle="bold"
+                    />
+                  </Group>
+                </Group>
+              );
+            })}
+
+            {/* Podgląd aktualnie rysowanej linii pomiarowej */}
+            {currentMeasureLine && (() => {
+              const dx = currentMeasureLine.x2 - currentMeasureLine.x1;
+              const dy = currentMeasureLine.y2 - currentMeasureLine.y1;
+              const distPx = Math.hypot(dx, dy);
+              if (distPx < 1) return null;
+              const distM = (distPx / pixelsPerMeter);
+              const distText = distM < 10 ? distM.toFixed(2) + ' m' : distM.toFixed(1) + ' m';
+              const midX = (currentMeasureLine.x1 + currentMeasureLine.x2) / 2;
+              const midY = (currentMeasureLine.y1 + currentMeasureLine.y2) / 2;
+              let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+              if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+              const badgeW = Math.max(54, distText.length * 7.5) / Math.max(0.4, stageScale);
+              const badgeH = 22 / Math.max(0.4, stageScale);
+
+              return (
+                <Group>
+                  <Line
+                    points={[currentMeasureLine.x1, currentMeasureLine.y1, currentMeasureLine.x2, currentMeasureLine.y2]}
+                    stroke="#38bdf8"
+                    strokeWidth={2.5 / Math.max(0.4, stageScale)}
+                    dash={[4, 4]}
+                    lineCap="round"
+                  />
+                  <Circle x={currentMeasureLine.x1} y={currentMeasureLine.y1} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
+                  <Circle x={currentMeasureLine.x2} y={currentMeasureLine.y2} radius={4 / Math.max(0.4, stageScale)} fill="#38bdf8" />
+                  <Group x={midX} y={midY} rotation={angleDeg}>
+                    <Rect
+                      x={-badgeW / 2}
+                      y={-badgeH / 2}
+                      width={badgeW}
+                      height={badgeH}
+                      fill="#0ea5e9"
+                      stroke="#ffffff"
+                      strokeWidth={1 / Math.max(0.4, stageScale)}
+                      cornerRadius={6 / Math.max(0.4, stageScale)}
+                      shadowColor="#000000"
+                      shadowBlur={4}
+                      shadowOpacity={0.5}
+                    />
+                    <Text
+                      text={distText}
+                      x={-badgeW / 2}
+                      y={-badgeH / 2 + (5 / Math.max(0.4, stageScale))}
+                      width={badgeW}
+                      align="center"
+                      fill="#ffffff"
+                      fontSize={11 / Math.max(0.4, stageScale)}
+                      fontFamily="monospace"
+                      fontStyle="bold"
+                    />
+                  </Group>
+                </Group>
+              );
+            })()}
 
           {/* ZADANIE 6: react-konva Transformer z obracaniem i skokiem co 0.5m w świecie fizycznym */}
           {/* react-konva Transformer z obracaniem z rogów (wyłączona opcja zmiany wymiarów, sztywny metraż!) */}
