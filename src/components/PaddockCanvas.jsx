@@ -1114,9 +1114,20 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                   }
                   const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
                   if (collidedId) {
+                    if (!allowCollisions) {
+                      // Blokuj ruch — przywróć ostatnią prawidłową pozycję
+                      const lastValid = lastValidCoordsRef.current[team.id] || { x: team.x, y: team.y, rotation: team.rotation || 0 };
+                      e.target.x(lastValid.x);
+                      e.target.y(lastValid.y);
+                      e.target.rotation(lastValid.rotation || 0);
+                    }
                     setCollidingTeamIds([team.id, collidedId]);
-                  } else if (collidingTeamIds.length > 0) {
-                    setCollidingTeamIds([]);
+                  } else {
+                    // Zapisz ostatnią prawidłową pozycję
+                    lastValidCoordsRef.current[team.id] = { x: candidate.x, y: candidate.y, rotation: candidate.rotation || 0 };
+                    if (collidingTeamIds.length > 0) {
+                      setCollidingTeamIds([]);
+                    }
                   }
                 }}
                 onDragEnd={(e) => {

@@ -256,7 +256,7 @@ function getShortestAngleDiff(a, b) {
  * @param {number} snapThresholdMeters - Odległość w metrach, w której aktywuje się magnes (domyślnie 0.8m)
  * @returns {object|null} Zwraca { x, y, rotation, snappedToId } lub null, jeśli brakuje bliskich sąsiadów
  */
-export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.15) {
+export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, snapThresholdMeters = 0.3) {
   if (!allTeams || allTeams.length === 0 || !pixelsPerMeter) return null;
 
   const thresholdPx = snapThresholdMeters * pixelsPerMeter;
@@ -618,7 +618,7 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
   return bestCandidate;
 }
 
-export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.15) {
+export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.3) {
   const neighborSnap = findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, thresholdMeters);
   const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 3.0);
 
