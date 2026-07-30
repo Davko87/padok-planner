@@ -510,7 +510,7 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
  * ZADANIE: Przyciąganie namiotu do narysowanych linii pomocniczych / krawężników.
  * Alignuje obrót do linii oraz wyrównuje krawędź prostokąta idealnie do linii krawężnika (jak kontener do kontenera).
  */
-export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 0.2) {
+export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters = 0.5) {
   if (!guideLines || guideLines.length === 0 || !targetTeam) return null;
 
   const thresholdPx = thresholdMeters * pixelsPerMeter;
@@ -620,7 +620,7 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
 
 export function findCombinedMagneticSnap(targetTeam, allTeams, guideLines, pixelsPerMeter, thresholdMeters = 0.15) {
   const neighborSnap = findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, thresholdMeters);
-  const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 1.2);
+  const lineSnap = findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, pixelsPerMeter, thresholdMeters * 3.0);
 
   if (neighborSnap && lineSnap) {
     const distN = Math.hypot(neighborSnap.x - targetTeam.x, neighborSnap.y - targetTeam.y);
