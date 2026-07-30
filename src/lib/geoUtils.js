@@ -340,14 +340,12 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     const cand_v_bottom = O_h - v_min_rel;
     const cand_v_top = -v_max_rel;
 
-    // Linie wyrównania (krawędzie góra/dół/lewo/prawo oraz środki)
+    // Linie wyrównania (krawędzie góra/dół/lewo/prawo)
     const align_u_left = -u_min_rel;
     const align_u_right = O_w - u_max_rel;
-    const align_u_mid = O_w / 2 - (u_min_rel + u_max_rel) / 2;
 
     const align_v_top = -v_min_rel;
     const align_v_bot = O_h - v_max_rel;
-    const align_v_mid = O_h / 2 - (v_min_rel + v_max_rel) / 2;
 
     const candidatesToTest = [];
 
@@ -355,8 +353,8 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     for (const u_val of [cand_u_right, cand_u_left]) {
       if (Math.abs(proj_u - u_val) < thresholdPx * 1.5) {
         let v_val = proj_v;
-        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 0.3) {
+        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.8) {
             v_val = av;
             break;
           }
@@ -369,8 +367,8 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     for (const v_val of [cand_v_bottom, cand_v_top]) {
       if (Math.abs(proj_v - v_val) < thresholdPx * 1.5) {
         let u_val = proj_u;
-        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
+        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right]) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
             u_val = au;
             break;
           }
@@ -383,8 +381,8 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     for (const u_val of [align_u_left, align_u_right]) {
       if (Math.abs(proj_u - u_val) < thresholdPx * 0.8) {
         let v_val = proj_v;
-        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot, align_v_mid]) {
-          if (Math.abs(proj_v - av) < thresholdPx * 0.3) {
+        for (const av of [cand_v_bottom, cand_v_top, align_v_top, align_v_bot]) {
+          if (Math.abs(proj_v - av) < thresholdPx * 0.8) {
             v_val = av;
             break;
           }
@@ -397,8 +395,8 @@ export function findMagneticSnapPosition(targetTeam, allTeams, pixelsPerMeter, s
     for (const v_val of [align_v_top, align_v_bot]) {
       if (Math.abs(proj_v - v_val) < thresholdPx * 0.8) {
         let u_val = proj_u;
-        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right, align_u_mid]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
+        for (const au of [cand_u_right, cand_u_left, align_u_left, align_u_right]) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
             u_val = au;
             break;
           }
@@ -590,7 +588,7 @@ export function findMagneticSnapToGuideLines(targetTeam, guideLines, allTeams, p
         let u_val = proj_u;
         // Opcjonalne wyrównanie do początku (0) lub końca (len) linii
         for (const au of [-u_min_rel, len - u_max_rel]) {
-          if (Math.abs(proj_u - au) < thresholdPx * 0.3) {
+          if (Math.abs(proj_u - au) < thresholdPx * 0.8) {
             u_val = au;
             break;
           }
