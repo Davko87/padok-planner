@@ -17,6 +17,8 @@ function HomePage() {
   // Zamiast renderowania hybrydowego, uzywamy Google Maps
   const map = useMap3D();
   const [camera, setCamera] = useState({ center: { lat: 51.5, lng: 18.0, altitude: 5000000 }, range: 5000000, tilt: 0, heading: 0 });
+  const isFlyingRef = useRef(false);
+  const flyingTimerRef = useRef(null);
   const placesLibrary = useMapsLibrary('places');
   const markerLibrary = useMapsLibrary('marker');
   const elevationLibrary = useMapsLibrary('elevation');
@@ -152,9 +154,18 @@ function HomePage() {
     });
   }, [searchQuery, autocompleteService]);
 
+  const flyToCamera = (newCamera) => {
+    // Blokujemy onCameraChanged na czas lotu
+    isFlyingRef.current = true;
+    if (flyingTimerRef.current) clearTimeout(flyingTimerRef.current);
+    flyingTimerRef.current = setTimeout(() => { isFlyingRef.current = false; }, 2500);
+    setCamera(newCamera);
+  };
+
   const handlePlaceSelect = (placeId, description) => {
     if (!placesService || !map) return;
     setShowDropdown(false);
+    setSearchQuery('');
 
     placesService.getDetails({ placeId, fields: ['geometry', 'name', 'formatted_address'] }, (place, status) => {
       if (status === window.google.maps.places.PlacesServiceStatus.OK && place.geometry && place.geometry.location) {
@@ -174,7 +185,7 @@ function HomePage() {
         setShowCustomBoundsModal(false);
 
         // Lot kinowy w pełne 3D
-        setCamera({
+        flyToCamera({
           center: { lat, lng, altitude: 0 },
           range: 800,
           tilt: 55,
@@ -196,7 +207,7 @@ function HomePage() {
     setPolygonPoints([]);
     setIsPolygonClosed(false);
     setShowCameraControls(false);
-    setCamera({ center: { lat: 51.5, lng: 18.0, altitude: 5000000 }, range: 5000000, tilt: 0, heading: 0 });
+    flyToCamera({ center: { lat: 51.5, lng: 18.0, altitude: 5000000 }, range: 5000000, tilt: 0, heading: 0 });
   };
 
   // Rysowanie Linii, Poligonów i Pinezek 3D
@@ -449,6 +460,7 @@ function HomePage() {
           heading={camera.heading}
           mode="SATELLITE"
           onCameraChanged={(e) => {
+            if (isFlyingRef.current) return;
             setCamera({
               center: e.detail.center,
               range: e.detail.range,
