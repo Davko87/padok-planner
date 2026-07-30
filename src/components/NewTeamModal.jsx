@@ -264,6 +264,12 @@ function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = 
                             className="w-full bg-black/40 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:border-indigo-400 focus:outline-none"
                           />
                         </div>
+                        {v.type === 'truck' && (
+                          <div className="col-span-2 bg-indigo-900/40 p-2 rounded-md border border-indigo-500/30 flex items-center justify-between text-[11px] mt-1">
+                            <div className="text-white/70">Winda rozładunkowa: <span className="text-white font-medium">+3.3m</span></div>
+                            <div className="text-indigo-300 font-bold tracking-wide">CAŁKOWITA: {(parseFloat(activeElements[v.type].length || 0) + 3.3).toFixed(1)}m</div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
