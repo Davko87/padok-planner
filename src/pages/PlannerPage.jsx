@@ -220,25 +220,24 @@ function PlannerPage() {
     }
     try {
       setSaveStatus('saving');
-      if (currentUser) {
-        // Zalogowany użytkownik: zapisujemy tylko dla niego (izolacja per-konto)
-        const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
-        await setDoc(layoutRef, {
-          teams: placedTeams,
-          guideLines,
-          measurements,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        // Użytkownik anonimowy: zapisujemy na głównym evencie
-        const docRef = doc(db, 'events', eventId);
-        await updateDoc(docRef, {
-          teams: placedTeams,
-          guideLines,
-          measurements,
-          updatedAt: serverTimestamp(),
-        });
-      }
+      const data = {
+        teams: placedTeams,
+        guideLines,
+        measurements,
+        updatedAt: serverTimestamp(),
+      };
+
+      const writePromise = currentUser
+        ? setDoc(doc(db, 'events', eventId, 'layouts', currentUser.uid), data)
+        : updateDoc(doc(db, 'events', eventId), data);
+
+      // Nie czekamy (await) na pełną synchronizację, bo przy słabym internecie
+      // Firebase kolejkuje to w cache i promise może wisieć. Zamiast tego łapiemy ewentualny błąd w tle.
+      writePromise.catch((err) => {
+        console.error('Błąd zapisu w tle do Firestore:', err);
+        setSaveStatus('error');
+      });
+
       setSaveStatus('saved');
       setToastMessage('Projekt został pomyślnie zapisany!');
       setTimeout(() => setToastMessage(''), 3500);
@@ -272,26 +271,25 @@ function PlannerPage() {
     }
 
     setSaveStatus('pending');
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       try {
         setSaveStatus('saving');
-        if (currentUser) {
-          const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
-          await setDoc(layoutRef, {
-            teams: placedTeams,
-            guideLines,
-            measurements,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          const docRef = doc(db, 'events', eventId);
-          await updateDoc(docRef, {
-            teams: placedTeams,
-            guideLines,
-            measurements,
-            updatedAt: serverTimestamp(),
-          });
-        }
+        const data = {
+          teams: placedTeams,
+          guideLines,
+          measurements,
+          updatedAt: serverTimestamp(),
+        };
+
+        const writePromise = currentUser
+          ? setDoc(doc(db, 'events', eventId, 'layouts', currentUser.uid), data)
+          : updateDoc(doc(db, 'events', eventId), data);
+        
+        writePromise.catch((err) => {
+          console.error('Błąd automatycznego zapisu układu w tle:', err);
+          setSaveStatus('error');
+        });
+
         setSaveStatus('saved');
       } catch (err) {
         console.error('Błąd automatycznego zapisu układu:', err);
