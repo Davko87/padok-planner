@@ -49,12 +49,6 @@ export const TruckAsset = ({ color = '#ef4444', width, height }) => {
       {/* Pasy najazdowe windy */}
       <Line points={[25, 315, 25, 395]} stroke="#94a3b8" strokeWidth={4} />
       <Line points={[75, 315, 75, 395]} stroke="#94a3b8" strokeWidth={4} />
-      
-      {/* Klimatyzatory */}
-      <Circle x={50} y={120} radius={15} fill="#e2e8f0" />
-      <Circle x={50} y={120} radius={10} fill="#94a3b8" />
-      <Circle x={50} y={260} radius={15} fill="#e2e8f0" />
-      <Circle x={50} y={260} radius={10} fill="#94a3b8" />
     </Group>
   );
 };
