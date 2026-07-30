@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters, calculateHaversineDistanceMeters } from '../lib/geoUtils.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -64,28 +64,26 @@ function HomePage() {
       return;
     }
 
-    const fetchMyEvents = async () => {
-      setIsLoadingEvents(true);
-      try {
-        const q = query(
-          collection(db, 'events'),
-          where('ownerId', '==', currentUser.uid),
-          orderBy('createdAt', 'desc')
-        );
-        const querySnapshot = await getDocs(q);
-        const eventsList = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setMyEvents(eventsList);
-      } catch (err) {
-        console.error('Błąd podczas pobierania projektów:', err);
-      } finally {
-        setIsLoadingEvents(false);
-      }
-    };
+    const q = query(
+      collection(db, 'events'),
+      where('ownerId', '==', currentUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+    
+    setIsLoadingEvents(true);
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const eventsList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMyEvents(eventsList);
+      setIsLoadingEvents(false);
+    }, (err) => {
+      console.error('Błąd podczas pobierania projektów:', err);
+      setIsLoadingEvents(false);
+    });
 
-    fetchMyEvents();
+    return () => unsubscribe();
   }, [currentUser]);
 
   // Funkcja Duplikująca Padok

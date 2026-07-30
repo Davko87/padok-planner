@@ -34,6 +34,7 @@ function PlannerPage() {
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
   const hasLoadedInitialTeams = useRef(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   // Wymuszenie ponownego wczytania padoku (wyczyszczenie stanu) gdy użytkownik się zaloguje/wyloguje
   useEffect(() => {
@@ -181,7 +182,8 @@ function PlannerPage() {
           }
         } else {
           // Brak własnego układu na serwerze - pusta, czysta karta na start!
-          if (!hasLoadedInitialTeams.current) {
+          // Upewniamy się, że to odpowiedź z serwera, a nie pusty cache!
+          if (!hasLoadedInitialTeams.current && !layoutSnap.metadata.fromCache) {
             setPlacedTeams([]);
             setGuideLines([]);
             setMeasurements([]);
@@ -238,6 +240,8 @@ function PlannerPage() {
         });
       }
       setSaveStatus('saved');
+      setToastMessage('Projekt został pomyślnie zapisany!');
+      setTimeout(() => setToastMessage(''), 3500);
     } catch (err) {
       console.error('Błąd ręcznego zapisu układu do Firestore:', err);
       setSaveStatus('error');
@@ -271,13 +275,23 @@ function PlannerPage() {
     const timer = setTimeout(async () => {
       try {
         setSaveStatus('saving');
-        const docRef = doc(db, 'events', eventId);
-        await updateDoc(docRef, {
-          teams: placedTeams,
-          guideLines,
-          measurements,
-          updatedAt: serverTimestamp(),
-        });
+        if (currentUser) {
+          const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
+          await setDoc(layoutRef, {
+            teams: placedTeams,
+            guideLines,
+            measurements,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          const docRef = doc(db, 'events', eventId);
+          await updateDoc(docRef, {
+            teams: placedTeams,
+            guideLines,
+            measurements,
+            updatedAt: serverTimestamp(),
+          });
+        }
         setSaveStatus('saved');
       } catch (err) {
         console.error('Błąd automatycznego zapisu układu:', err);
@@ -745,6 +759,18 @@ function PlannerPage() {
         onConfirm={handleConfirmDuplicate}
         teamName={pendingDuplicateNode?.template?.name || pendingDuplicateNode?.node?.name || 'Zespól Wyścigowy'}
       />
+
+      {/* Toast z powiadomieniem (np. o zapisie) */}
+      {toastMessage && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="bg-emerald-500/90 text-white px-5 py-2.5 rounded-full text-sm font-semibold tracking-wide shadow-glass-strong border border-emerald-400/50 flex items-center gap-2 backdrop-blur-md">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            {toastMessage}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
