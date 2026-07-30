@@ -39,15 +39,22 @@ export const TruckAsset = ({ color = '#ef4444', width, height }) => {
       <Rect x={15} y={5} width={70} height={50} cornerRadius={5} fill="#334155" /> 
       <Rect x={20} y={15} width={60} height={30} cornerRadius={3} fill="#94a3b8" />
       
-      {/* Naczepa (brakłącznika, bezpośrednio za kabiną) */}
-      <Rect x={0} y={78} width={100} height={322} cornerRadius={4} fill={roofColor} />
-      <Rect x={5} y={83} width={90} height={312} cornerRadius={2} fill="rgba(255,255,255,0.1)" />
+      {/* Naczepa (przestrzeń ładunkowa) */}
+      <Rect x={0} y={78} width={100} height={232} cornerRadius={4} fill={roofColor} />
+      <Rect x={5} y={83} width={90} height={222} cornerRadius={2} fill="rgba(255,255,255,0.1)" />
+      
+      {/* Rozłożona winda / rampa dla samochodów (na końcu naczepy) */}
+      <Rect x={0} y={310} width={100} height={90} cornerRadius={[0, 0, 4, 4]} fill="#475569" />
+      <Rect x={5} y={315} width={90} height={80} cornerRadius={2} fill="#64748b" />
+      {/* Pasy najazdowe windy */}
+      <Line points={[25, 315, 25, 395]} stroke="#94a3b8" strokeWidth={4} />
+      <Line points={[75, 315, 75, 395]} stroke="#94a3b8" strokeWidth={4} />
       
       {/* Klimatyzatory */}
       <Circle x={50} y={120} radius={15} fill="#e2e8f0" />
       <Circle x={50} y={120} radius={10} fill="#94a3b8" />
-      <Circle x={50} y={350} radius={15} fill="#e2e8f0" />
-      <Circle x={50} y={350} radius={10} fill="#94a3b8" />
+      <Circle x={50} y={260} radius={15} fill="#e2e8f0" />
+      <Circle x={50} y={260} radius={10} fill="#94a3b8" />
     </Group>
   );
 };
