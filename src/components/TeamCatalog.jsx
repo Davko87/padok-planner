@@ -69,32 +69,25 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
 
   useEffect(() => {
     // Real-time listener for teams_templates
-    const q = query(collection(db, 'teams_templates'), orderBy('createdAt', 'desc'));
+    const q = collection(db, 'teams_templates');
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const fetchedTeams = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })).sort((a, b) => {
+          const timeA = a.createdAt?.seconds || a.createdAt || 0;
+          const timeB = b.createdAt?.seconds || b.createdAt || 0;
+          return timeB - timeA;
+        });
+        
         setTeams(fetchedTeams);
         setIsLoading(false);
       },
       (error) => {
         console.error('Błąd pobierania szablonów teamów:', error);
-        // Fallback without ordering if index is missing locally or offline query requires different sorting
-        const unsubscribeFallback = onSnapshot(
-          collection(db, 'teams_templates'),
-          (fallbackSnapshot) => {
-            const fallbackTeams = fallbackSnapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-            setTeams(fallbackTeams);
-            setIsLoading(false);
-          }
-        );
-        return () => unsubscribeFallback();
+        setIsLoading(false);
       }
     );
 
