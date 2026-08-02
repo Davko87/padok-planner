@@ -1498,8 +1498,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
             <Transformer
               ref={trRef}
               resizeEnabled={false} // Całkowita blokada skalowania na płótnie!
-              rotateEnabled={true}  // Włączony precyzyjny obrót z rogów
-              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']} // 4 rogi jako uchwyty obrotu
+              rotateEnabled={true}  // Włączony rotater
               rotationSnaps={[]} // Swobodny i delikatny obrót co 0.1°-1° w każdej płaszczyźnie bez sztywnego przeskoku 45°
               anchorStroke="#10B981"
               anchorFill="#ffffff"
@@ -1518,7 +1517,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               ref={elTrRef}
               resizeEnabled={false} 
               rotateEnabled={true}  
-              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']} 
               rotationSnaps={[]} 
               anchorStroke="#6366f1"
               anchorFill="#ffffff"
