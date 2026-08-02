@@ -105,7 +105,18 @@ function HomePage() {
         // Dodaj projekty offline
         const localEvents = Object.keys(localStorage)
           .filter(key => key.startsWith('local-event-'))
-          .map(key => JSON.parse(localStorage.getItem(key)));
+          .map(key => {
+            try {
+              const parsed = JSON.parse(localStorage.getItem(key));
+              if (parsed && !parsed.id) {
+                parsed.id = key.replace('local-event-', '');
+              }
+              return parsed;
+            } catch (e) {
+              return null;
+            }
+          })
+          .filter(Boolean);
           
         eventsList = [...eventsList, ...localEvents];
         
@@ -457,12 +468,12 @@ function HomePage() {
 
   // Funkcja Usuwająca Padok
   const handleDeleteEvent = async (event) => {
-    if (!window.confirm(`Czy na pewno chcesz usunąć projekt "${event.name}"? Tej operacji nie można cofnąć.`)) {
+    if (!window.confirm(`Czy na pewno chcesz usunąć projekt "${event?.name || 'Nieznany'}"? Tej operacji nie można cofnąć.`)) {
       return;
     }
     
     try {
-      if (event.id.startsWith('local-')) {
+      if (event?.id?.startsWith('local-')) {
         localStorage.removeItem('local-event-' + event.id);
         setMyEvents(prev => prev.filter(e => e.id !== event.id));
       } else {
