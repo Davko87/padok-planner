@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const PRESET_COLORS = [
   '#ef4444', // Red
@@ -20,6 +21,7 @@ function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = 
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#ef4444');
+  const { currentUser } = useAuth();
 
   const [activeElements, setActiveElements] = useState({
     truck: { enabled: true, width: 2.5, length: 12 },
@@ -138,19 +140,39 @@ function NewTeamModal({ isOpen, onClose, editingTeam = null, onUpdateTemplate = 
       };
 
       if (editingTeam && editingTeam.id) {
-        // Błyskawiczny zapis bez blokowania interfejsu (optymistyczny update + synchro w tle bez czekania 40s)
-        updateDoc(doc(db, 'teams_templates', editingTeam.id), teamData).catch((err) =>
-          console.error('Błąd synchronizacji updateDoc w tle:', err)
-        );
+        if (!currentUser) {
+          // Edycja lokalna
+          const localTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+          const idx = localTeams.findIndex(t => t.id === editingTeam.id);
+          if (idx !== -1) {
+            localTeams[idx] = { ...localTeams[idx], ...teamData, updatedAt: Date.now() };
+            localStorage.setItem('local_teams_templates', JSON.stringify(localTeams));
+            window.dispatchEvent(new Event('local_teams_templates_updated'));
+          }
+        } else {
+          updateDoc(doc(db, 'profiles', currentUser.uid, 'teams_templates', editingTeam.id), teamData).catch((err) =>
+            console.error('Błąd synchronizacji updateDoc w tle:', err)
+          );
+        }
+        
         if (onUpdateTemplate) {
           onUpdateTemplate({ id: editingTeam.id, ...teamData });
         }
       } else {
-        // Nowy team - błyskawiczna inicjacja bez czekania na wolny ACK z serwera
-        addDoc(collection(db, 'teams_templates'), {
-          ...teamData,
-          createdAt: serverTimestamp(),
-        }).catch((err) => console.error('Błąd synchronizacji addDoc w tle:', err));
+        if (!currentUser) {
+          // Zapis lokalny
+          const localTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+          const newId = 'local-team-' + Date.now();
+          localTeams.push({ id: newId, ...teamData, createdAt: Date.now(), updatedAt: Date.now() });
+          localStorage.setItem('local_teams_templates', JSON.stringify(localTeams));
+          window.dispatchEvent(new Event('local_teams_templates_updated'));
+        } else {
+          // Nowy team w chmurze
+          addDoc(collection(db, 'profiles', currentUser.uid, 'teams_templates'), {
+            ...teamData,
+            createdAt: serverTimestamp(),
+          }).catch((err) => console.error('Błąd synchronizacji addDoc w tle:', err));
+        }
       }
 
       // Natychmiastowe zamknięcie modalu (zapis trwa < 0.1s zamiast 40s)

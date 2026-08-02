@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import NewTeamModal from './NewTeamModal.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const getTeamDimensions = (team) => {
   if (!team.elements || team.elements.length === 0) {
@@ -43,10 +44,22 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   const [deletingTeam, setDeletingTeam] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { currentUser } = useAuth();
 
   const handleDeleteTeam = () => {
     if (!deletingTeam) return;
     setIsDeleting(true);
+
+    if (!currentUser) {
+      // Usunięcie lokalne
+      const localTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+      const updatedTeams = localTeams.filter(t => t.id !== deletingTeam.id);
+      localStorage.setItem('local_teams_templates', JSON.stringify(updatedTeams));
+      setTeams(updatedTeams);
+      setDeletingTeam(null);
+      setIsDeleting(false);
+      return;
+    }
     
     // Zabezpieczenie: jeśli Firebase nie odpowie w ciągu 1.5 sekundy, zamknij modal (częsty problem z offline persistence na darmowym planie)
     const timeout = setTimeout(() => {
@@ -54,7 +67,7 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
       setDeletingTeam(null);
     }, 1500);
 
-    deleteDoc(doc(db, 'teams_templates', deletingTeam.id))
+    deleteDoc(doc(db, 'profiles', currentUser.uid, 'teams_templates', deletingTeam.id))
       .then(() => {
         clearTimeout(timeout);
         setDeletingTeam(null);
@@ -68,8 +81,46 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
   };
 
   useEffect(() => {
-    // Real-time listener for teams_templates
-    const q = collection(db, 'teams_templates');
+    if (!currentUser) {
+      const localTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+      setTeams(localTeams.sort((a, b) => {
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        return timeB - timeA;
+      }));
+      setIsLoading(false);
+      
+      // Dodajemy event listener żeby inna zakładka lub modal mogły odświeżyć listę
+      const handleStorageChange = (e) => {
+        if (e.key === 'local_teams_templates') {
+          const freshLocalTeams = JSON.parse(e.newValue || '[]');
+          setTeams(freshLocalTeams.sort((a, b) => {
+            const timeA = a.createdAt || 0;
+            const timeB = b.createdAt || 0;
+            return timeB - timeA;
+          }));
+        }
+      };
+      // Wysłuchuje zmian z INNYCH kart i custom eventy z modala (w tej samej karcie StorageEvent nie działa bez sztucznego eventu)
+      window.addEventListener('storage', handleStorageChange);
+      const customListener = () => {
+        const freshLocalTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+        setTeams(freshLocalTeams.sort((a, b) => {
+          const timeA = a.createdAt || 0;
+          const timeB = b.createdAt || 0;
+          return timeB - timeA;
+        }));
+      };
+      window.addEventListener('local_teams_templates_updated', customListener);
+      
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('local_teams_templates_updated', customListener);
+      };
+    }
+
+    // Real-time listener for user's private teams_templates
+    const q = collection(db, 'profiles', currentUser.uid, 'teams_templates');
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -86,13 +137,13 @@ function TeamCatalog({ onSelectTeam, onUpdateTemplate }) {
         setIsLoading(false);
       },
       (error) => {
-        console.error('Błąd pobierania szablonów teamów:', error);
+        console.error('Błąd pobierania prywatnych szablonów teamów:', error);
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   return (
     <>

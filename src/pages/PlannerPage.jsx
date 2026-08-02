@@ -536,13 +536,25 @@ function PlannerPage() {
         const oldElementsStr = JSON.stringify(oldTeam.elements || []);
         const newElementsStr = JSON.stringify(newTeam.elements || []);
         if (oldElementsStr !== newElementsStr) {
-          try {
-            updateDoc(doc(db, 'teams_templates', newTeam.templateId), {
-              elements: newTeam.elements,
-              updatedAt: serverTimestamp()
-            }).catch(console.error);
-          } catch (e) {
-            console.error('Błąd przy aktualizacji szablonu', e);
+          if (!currentUser) {
+            // Zapis lokalny
+            const localTeams = JSON.parse(localStorage.getItem('local_teams_templates') || '[]');
+            const idx = localTeams.findIndex(t => t.id === newTeam.templateId);
+            if (idx !== -1) {
+              localTeams[idx].elements = newTeam.elements;
+              localTeams[idx].updatedAt = Date.now();
+              localStorage.setItem('local_teams_templates', JSON.stringify(localTeams));
+              window.dispatchEvent(new Event('local_teams_templates_updated'));
+            }
+          } else {
+            try {
+              updateDoc(doc(db, 'profiles', currentUser.uid, 'teams_templates', newTeam.templateId), {
+                elements: newTeam.elements,
+                updatedAt: serverTimestamp()
+              }).catch(console.error);
+            } catch (e) {
+              console.error('Błąd przy aktualizacji szablonu', e);
+            }
           }
         }
       }
