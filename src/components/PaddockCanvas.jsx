@@ -907,7 +907,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
             
             let labelElementId = null;
             if (team.elements && team.elements.length > 0) {
-              const priorities = ['truck', 'van', 'tent', 'towTruck', 'awning', 'car'];
+              const priorities = ['truck', 'tent', 'awning'];
               for (const type of priorities) {
                 const el = team.elements.find(e => e.type === type);
                 if (el) {
@@ -915,7 +915,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                   break;
                 }
               }
-              if (!labelElementId) labelElementId = team.elements[0].id;
             }
 
             return (
