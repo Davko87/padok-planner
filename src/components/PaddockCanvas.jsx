@@ -595,7 +595,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     if (selectedObstacleId) return; // Przeszkody się nie obracają
     if (!selectedTeamId) return;
     const target = placedTeams.find((t) => t.id === selectedTeamId);
-    if (!target || target.isLocked) return;
+    if (!target) return;
 
     const candidate = {
       ...target,
@@ -1494,7 +1494,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
           {/* ZADANIE 6: react-konva Transformer z obracaniem i skokiem co 0.5m w świecie fizycznym */}
           {/* react-konva Transformer z obracaniem z rogów (wyłączona opcja zmiany wymiarów, sztywny metraż!) */}
-          {selectedTeamId && !selectedElementId && selectedTeamObj && !selectedTeamObj.isLocked && (
+          {selectedTeamId && !selectedElementId && (
             <Transformer
               ref={trRef}
               resizeEnabled={false} // Całkowita blokada skalowania na płótnie!
@@ -1512,7 +1512,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
           )}
 
           {/* Transformer dla pojedynczego pojazdu w rozgrupowanym zespole */}
-          {selectedTeamId && selectedElementId && selectedTeamObj && !selectedTeamObj.isLocked && (
+          {selectedTeamId && selectedElementId && (
             <Transformer
               ref={elTrRef}
               resizeEnabled={false} 
