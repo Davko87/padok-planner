@@ -240,15 +240,16 @@ function PlannerPage() {
       }
 
       const savePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
-      
-      await Promise.race([savePromise, timeoutPromise]);
+      savePromise.catch((err) => {
+        console.error('Błąd ręcznego zapisu układu do Firestore:', err);
+        setSaveStatus('error');
+      });
 
       setSaveStatus('saved');
-      setToastMessage('Projekt został pomyślnie zapisany w chmurze!');
+      setToastMessage('Projekt został pomyślnie zapisany!');
       setTimeout(() => setToastMessage(''), 3500);
     } catch (err) {
-      console.error('Błąd ręcznego zapisu układu do Firestore:', err);
+      console.error('Błąd ogólny podczas zapisu układu:', err);
       setSaveStatus('error');
       setToastMessage('Błąd zapisu! Sprawdź połączenie.');
       setTimeout(() => setToastMessage(''), 3500);
@@ -263,10 +264,8 @@ function PlannerPage() {
       return;
     }
     if (eventId.startsWith('local-')) {
-      setSaveStatus('pending');
       const timer = setTimeout(() => {
         try {
-          setSaveStatus('saving');
           const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
           const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
           localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
@@ -278,10 +277,9 @@ function PlannerPage() {
       return () => clearTimeout(timer);
     }
 
-    setSaveStatus('pending');
     const timer = setTimeout(() => {
       try {
-        setSaveStatus('saving');
+        // Cichy autozapis - nie zmieniamy statusu na pending/saving aby nie mrugało
         // Podobnie w autozapisie, musimy uwzględnić całą strukturę projektu
         const data = {
           name: eventData?.name || 'Nowy Padok',
