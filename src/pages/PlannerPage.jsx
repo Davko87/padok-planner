@@ -122,72 +122,77 @@ function PlannerPage() {
       });
     }, 1500);
 
-    // W tle wciąż nasłuchujemy na ewentualne zapisane zespoły w chmurze Firestore
-    const docRef = doc(db, 'events', eventId);
-    const unsubscribeEvent = onSnapshot(
-      docRef,
-      (docSnap) => {
-        clearTimeout(timeoutId);
-        if (docSnap.exists()) {
-          const data = { id: docSnap.id, ...docSnap.data() };
-          setEventData((prev) => ({
-            ...prev,
-            ...data
-          }));
-          // Zawsze ładujemy układ z głównego dokumentu jako bazę (dla gości lub starszych projektów)
-          if (!hasLoadedInitialTeams.current || hasLoadedInitialTeams.current === 'from_main') {
-            setPlacedTeams(data.teams || []);
-            setGuideLines(data.guideLines || []);
-            setMeasurements(data.measurements || []);
-            hasLoadedInitialTeams.current = 'from_main';
-          }
-          setErrorEvent(null);
-        } else if (!trackPreset) {
-          // Jeśli nie było w presetach ani w Firestore, ustaw domyślne parametry zamiast błędu
-          const fallbackPreset = PRESET_TRACKS['tor-poznan'];
-          const [minLng, minLat, maxLng, maxLat] = fallbackPreset.bbox.split(',').map(Number);
-          setEventData({
-            id: eventId,
-            name: `Nowy Padok: ${eventId}`,
-            widthMeters: 250,
-            heightMeters: 180,
-            bounds: {
-              center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
-              zoom: 17
-            }
-          });
-        }
-        setIsLoadingEvent(false);
-      },
-      (err) => {
-        clearTimeout(timeoutId);
-        console.error('Błąd pobierania eventu z Firestore:', err);
-        // Jeśli błąd sieci na GitHub Pages, zdejmij loading i pozwól na działanie na lokalnym presecie
-        setIsLoadingEvent(false);
-      }
-    );
-
-    let unsubscribeLayout = null;
+    let unsubscribeEvent = null;
+    
     if (currentUser && !eventId.startsWith('local-')) {
-      const layoutRef = doc(db, 'events', eventId, 'layouts', currentUser.uid);
-      unsubscribeLayout = onSnapshot(layoutRef, (layoutSnap) => {
-        if (layoutSnap.exists()) {
-          const layoutData = layoutSnap.data();
-          if (hasLoadedInitialTeams.current !== 'from_layout') {
-            setPlacedTeams(layoutData.teams || []);
-            setGuideLines(layoutData.guideLines || []);
-            setMeasurements(layoutData.measurements || []);
-            hasLoadedInitialTeams.current = 'from_layout';
+      const docRef = doc(db, 'profiles', currentUser.uid, 'projects', eventId);
+      unsubscribeEvent = onSnapshot(
+        docRef,
+        (docSnap) => {
+          clearTimeout(timeoutId);
+          if (docSnap.exists()) {
+            const data = { id: docSnap.id, ...docSnap.data() };
+            setEventData((prev) => ({
+              ...prev,
+              ...data
+            }));
+            
+            if (!hasLoadedInitialTeams.current || hasLoadedInitialTeams.current === 'from_main') {
+              setPlacedTeams(data.teams || []);
+              setGuideLines(data.guideLines || []);
+              setMeasurements(data.measurements || []);
+              hasLoadedInitialTeams.current = 'from_main';
+            }
+            setErrorEvent(null);
+          } else if (trackPreset) {
+            // Projekt jeszcze nie istnieje w bazie usera, ale jest to preset
+            setEventData({
+              id: eventId,
+              name: trackPreset.name,
+              widthMeters: trackPreset.w,
+              heightMeters: trackPreset.h,
+              bounds: trackPreset.bbox ? {
+                center: [
+                  (Number(trackPreset.bbox.split(',')[0]) + Number(trackPreset.bbox.split(',')[2])) / 2,
+                  (Number(trackPreset.bbox.split(',')[1]) + Number(trackPreset.bbox.split(',')[3])) / 2
+                ],
+                zoom: 17
+              } : null,
+              isGoogle3D: !!trackPreset.isGoogle3D
+            });
           }
+          setIsLoadingEvent(false);
+        },
+        (err) => {
+          clearTimeout(timeoutId);
+          console.error('Błąd pobierania eventu z Firestore:', err);
+          setIsLoadingEvent(false);
         }
-        // Jeśli nie istnieje, zostawiamy to, co pobrał główny onSnapshot eventu (dla kompatybilności wstecznej)
-      });
+      );
+    } else {
+      if (trackPreset) {
+        // Gość (bez logowania) oglądający preset
+        setEventData({
+          id: eventId,
+          name: trackPreset.name,
+          widthMeters: trackPreset.w,
+          heightMeters: trackPreset.h,
+          bounds: trackPreset.bbox ? {
+            center: [
+              (Number(trackPreset.bbox.split(',')[0]) + Number(trackPreset.bbox.split(',')[2])) / 2,
+              (Number(trackPreset.bbox.split(',')[1]) + Number(trackPreset.bbox.split(',')[3])) / 2
+            ],
+            zoom: 17
+          } : null,
+          isGoogle3D: !!trackPreset.isGoogle3D
+        });
+      }
+      setIsLoadingEvent(false);
     }
 
     return () => {
       clearTimeout(timeoutId);
-      unsubscribeEvent();
-      if (unsubscribeLayout) unsubscribeLayout();
+      if (unsubscribeEvent) unsubscribeEvent();
     };
   }, [eventId, currentUser?.uid]);
 
@@ -204,6 +209,8 @@ function PlannerPage() {
         const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
         localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
         setSaveStatus('saved');
+        setToastMessage('Projekt (lokalny) został pomyślnie zapisany!');
+        setTimeout(() => setToastMessage(''), 3500);
       } catch (e) {
         setSaveStatus('error');
       }
@@ -211,16 +218,22 @@ function PlannerPage() {
     }
     try {
       setSaveStatus('saving');
+      // Jeśli to preset z mapy (który nie ma jeszcze wpisu), kopiujemy dane bazowe
       const data = {
+        name: eventData?.name || 'Nowy Padok',
+        widthMeters: eventData?.widthMeters || 250,
+        heightMeters: eventData?.heightMeters || 180,
+        bounds: eventData?.bounds || null,
+        isGoogle3D: !!eventData?.isGoogle3D,
         teams: placedTeams,
         guideLines,
         measurements,
         updatedAt: serverTimestamp(),
       };
 
-      const writePromise = currentUser
-        ? setDoc(doc(db, 'events', eventId, 'layouts', currentUser.uid), data)
-        : updateDoc(doc(db, 'events', eventId), data);
+      if (!currentUser) return; // Gość nie może zapisywać na serwerze
+
+      const writePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
 
       // Nie czekamy (await) na pełną synchronizację, bo przy słabym internecie
       // Firebase kolejkuje to w cache i promise może wisieć. Zamiast tego łapiemy ewentualny błąd w tle.
@@ -265,16 +278,22 @@ function PlannerPage() {
     const timer = setTimeout(() => {
       try {
         setSaveStatus('saving');
+        // Podobnie w autozapisie, musimy uwzględnić całą strukturę projektu
         const data = {
+          name: eventData?.name || 'Nowy Padok',
+          widthMeters: eventData?.widthMeters || 250,
+          heightMeters: eventData?.heightMeters || 180,
+          bounds: eventData?.bounds || null,
+          isGoogle3D: !!eventData?.isGoogle3D,
           teams: placedTeams,
           guideLines,
           measurements,
           updatedAt: serverTimestamp(),
         };
 
-        const writePromise = currentUser
-          ? setDoc(doc(db, 'events', eventId, 'layouts', currentUser.uid), data)
-          : updateDoc(doc(db, 'events', eventId), data);
+        if (!currentUser) return;
+
+        const writePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
         
         writePromise.catch((err) => {
           console.error('Błąd automatycznego zapisu układu w tle:', err);

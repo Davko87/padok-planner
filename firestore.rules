@@ -2,19 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Główna kolekcja wydarzeń/torów (otwarta do odczytu, zapis dla gości do głównego układu)
-    match /events/{eventId} {
-      allow read, write: if true;
+    // Zabezpieczenie kolekcji profili - użytkownik ma pełen dostęp tylko do swojego profilu i projektów
+    match /profiles/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
       
-      // Podkolekcja układów (layouts) - zablokowana! Tylko właściciel ma dostęp
-      match /layouts/{userId} {
+      // Podkolekcja projektów
+      match /projects/{projectId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
     
-    // Kolekcja użytkowników - użytkownik widzi i edytuje tylko swój własny profil
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Kolekcja użytkowników (używana do weryfikacji unikalności Nicku) - każdy zalogowany może czytać
+    match /users/{cleanNick} {
+      allow read: if true;
+      // Zapisujemy przy rejestracji
+      allow write: if request.auth != null;
     }
 
     // Katalog zespołów (szablony) - otwarty dla wszystkich do odczytu i zapisu

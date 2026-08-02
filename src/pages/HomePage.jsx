@@ -66,8 +66,7 @@ function HomePage() {
 
     // Próbujemy z indeksem złożonym (ownerId + createdAt desc)
     const q = query(
-      collection(db, 'events'),
-      where('ownerId', '==', currentUser.uid),
+      collection(db, 'profiles', currentUser.uid, 'projects'),
       orderBy('createdAt', 'desc')
     );
     
@@ -83,8 +82,7 @@ function HomePage() {
       console.error('Błąd indeksu złożonego, próbuję fallback bez orderBy:', err);
       // Fallback: zapytanie BEZ orderBy (nie wymaga indeksu złożonego)
       const fallbackQ = query(
-        collection(db, 'events'),
-        where('ownerId', '==', currentUser.uid)
+        collection(db, 'profiles', currentUser.uid, 'projects')
       );
       const fallbackUnsub = onSnapshot(fallbackQ, (snap) => {
         const eventsList = snap.docs.map(doc => ({
@@ -414,14 +412,13 @@ function HomePage() {
         polygonVertices: confirmedBounds.polygonVertices || null,
         createdAt: Date.now(),
         // Nie zapisujemy już gigantycznego obrazu Esri (imageUrl)!
-        isGoogle3D: true, // flaga dla nowego plannera
-        ownerId: currentUser ? currentUser.uid : null // Zapisujemy identyfikator twórcy
+        isGoogle3D: true // flaga dla nowego plannera
       };
 
       let newId;
       try {
-        const savePromise = addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp() });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2500));
+        const savePromise = addDoc(collection(db, 'profiles', currentUser.uid, 'projects'), { ...eventData, createdAt: serverTimestamp() });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
         const docRef = await Promise.race([savePromise, timeoutPromise]);
         newId = docRef.id;
       } catch (err) {
@@ -445,7 +442,7 @@ function HomePage() {
     }
     
     try {
-      await deleteDoc(doc(db, 'events', event.id));
+      await deleteDoc(doc(db, 'profiles', currentUser.uid, 'projects', event.id));
     } catch (error) {
       console.error('Błąd podczas usuwania projektu:', error);
       alert('Wystąpił błąd podczas usuwania projektu.');
