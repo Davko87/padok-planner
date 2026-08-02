@@ -462,7 +462,12 @@ function HomePage() {
     }
     
     try {
-      await deleteDoc(doc(db, 'profiles', currentUser.uid, 'projects', event.id));
+      if (event.id.startsWith('local-')) {
+        localStorage.removeItem('local-event-' + event.id);
+        setMyEvents(prev => prev.filter(e => e.id !== event.id));
+      } else {
+        await deleteDoc(doc(db, 'profiles', currentUser.uid, 'projects', event.id));
+      }
     } catch (error) {
       console.error('Błąd podczas usuwania projektu:', error);
       alert('Wystąpił błąd podczas usuwania projektu.');
@@ -602,7 +607,11 @@ function HomePage() {
                       >
                         <h3 className="text-sm font-bold text-white mb-1 pr-10 truncate">{event.name}</h3>
                         <p className="text-[10px] text-white/50 font-mono">
-                          Utworzono: {event.createdAt?.seconds ? new Date(event.createdAt.seconds * 1000).toLocaleDateString() : 'Brak daty'}
+                          Utworzono: {
+                            event.createdAt?.seconds 
+                              ? new Date(event.createdAt.seconds * 1000).toLocaleDateString() 
+                              : (event.createdAt ? new Date(event.createdAt).toLocaleDateString() : 'Brak daty')
+                          }
                         </p>
                       </button>
                       
