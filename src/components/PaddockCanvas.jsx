@@ -1712,7 +1712,6 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                     🗑️
                   </button>
                 )}
-                )}
               </div>
 
               {/* Dodaj Przeszkodę (Słupek) */}
