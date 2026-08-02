@@ -228,6 +228,7 @@ function PlannerPage() {
         teams: placedTeams,
         guideLines,
         measurements,
+        createdAt: eventData?.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
@@ -291,6 +292,7 @@ function PlannerPage() {
           teams: placedTeams,
           guideLines,
           measurements,
+          createdAt: eventData?.createdAt || serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
 

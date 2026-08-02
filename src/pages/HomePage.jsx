@@ -72,10 +72,22 @@ function HomePage() {
     
     setIsLoadingEvents(true);
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const eventsList = querySnapshot.docs.map(doc => ({
+      let eventsList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      // Dodaj projekty offline
+      const localEvents = Object.keys(localStorage)
+        .filter(key => key.startsWith('local-event-'))
+        .map(key => JSON.parse(localStorage.getItem(key)));
+        
+      eventsList = [...eventsList, ...localEvents].sort((a, b) => {
+        const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt || 0);
+        const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt || 0);
+        return bTime - aTime;
+      });
+
       setMyEvents(eventsList);
       setIsLoadingEvents(false);
     }, (err) => {
@@ -85,14 +97,22 @@ function HomePage() {
         collection(db, 'profiles', currentUser.uid, 'projects')
       );
       const fallbackUnsub = onSnapshot(fallbackQ, (snap) => {
-        const eventsList = snap.docs.map(doc => ({
+        let eventsList = snap.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
+        
+        // Dodaj projekty offline
+        const localEvents = Object.keys(localStorage)
+          .filter(key => key.startsWith('local-event-'))
+          .map(key => JSON.parse(localStorage.getItem(key)));
+          
+        eventsList = [...eventsList, ...localEvents];
+        
         // Sortujemy po stronie klienta
         eventsList.sort((a, b) => {
-          const aTime = a.createdAt?.seconds || a.createdAt || 0;
-          const bTime = b.createdAt?.seconds || b.createdAt || 0;
+          const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt || 0);
+          const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt || 0);
           return bTime - aTime;
         });
         setMyEvents(eventsList);
