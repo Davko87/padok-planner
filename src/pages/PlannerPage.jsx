@@ -17,9 +17,11 @@ function PlannerPage() {
   const [errorEvent, setErrorEvent] = useState(null);
 
   const [placedTeams, setPlacedTeams] = useState([]);
+  const [obstacles, setObstacles] = useState([]);
   const [guideLines, setGuideLines] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [selectedObstacleId, setSelectedObstacleId] = useState(null);
   const [allowCollisions, setAllowCollisions] = useState(false);
   const [enableMagnet, setEnableMagnet] = useState(true);
   const [scalePx, setScalePx] = useState(null);
@@ -51,6 +53,7 @@ function PlannerPage() {
           const parsed = JSON.parse(localJson);
           setEventData(parsed);
           setPlacedTeams(parsed.teams || []);
+          setObstacles(parsed.obstacles || []);
           hasLoadedInitialTeams.current = true;
           setIsLoadingEvent(false);
           return;
@@ -139,6 +142,7 @@ function PlannerPage() {
             
             if (!hasLoadedInitialTeams.current || hasLoadedInitialTeams.current === 'from_main') {
               setPlacedTeams(data.teams || []);
+              setObstacles(data.obstacles || []);
               setGuideLines(data.guideLines || []);
               setMeasurements(data.measurements || []);
               hasLoadedInitialTeams.current = 'from_main';
@@ -267,7 +271,7 @@ function PlannerPage() {
       const timer = setTimeout(() => {
         try {
           const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-          const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
+          const updated = { ...current, teams: placedTeams, obstacles, guideLines, measurements, updatedAt: Date.now() };
           localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
           setSaveStatus('saved');
         } catch (e) {
@@ -288,6 +292,7 @@ function PlannerPage() {
           bounds: eventData?.bounds || null,
           isGoogle3D: !!eventData?.isGoogle3D,
           teams: placedTeams,
+          obstacles,
           guideLines,
           measurements,
           createdAt: eventData?.createdAt || serverTimestamp(),
@@ -574,8 +579,12 @@ function PlannerPage() {
         onUpdateGuideLines={setGuideLines}
         measurements={measurements}
         onUpdateMeasurements={setMeasurements}
+        obstacles={obstacles}
+        onUpdateObstacles={setObstacles}
         selectedTeamId={selectedTeamId}
         onSelectTeam={setSelectedTeamId}
+        selectedObstacleId={selectedObstacleId}
+        onSelectObstacle={setSelectedObstacleId}
         allowCollisions={allowCollisions}
         onToggleCollisions={() => setAllowCollisions((v) => !v)}
         enableMagnet={enableMagnet}
@@ -664,15 +673,20 @@ function PlannerPage() {
             </div>
           </div>
 
-          {/* Przycisk Usuń zaznaczony zespół */}
-          {selectedTeamId && (
+          {/* Przycisk Usuń zaznaczony zespół lub przeszkodę */}
+          {(selectedTeamId || selectedObstacleId) && (
             <button
               onClick={() => {
-                setPlacedTeams(placedTeams.filter((t) => t.id !== selectedTeamId));
-                setSelectedTeamId(null);
+                if (selectedTeamId) {
+                  setPlacedTeams(placedTeams.filter((t) => t.id !== selectedTeamId));
+                  setSelectedTeamId(null);
+                } else if (selectedObstacleId) {
+                  setObstacles(obstacles.filter((o) => o.id !== selectedObstacleId));
+                  setSelectedObstacleId(null);
+                }
               }}
               className="w-full py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 text-xs flex items-center justify-center gap-1.5 transition-all shadow"
-              title="Usuń zaznaczony zespół z toru"
+              title={selectedTeamId ? "Usuń zaznaczony zespół z toru" : "Usuń zaznaczoną przeszkodę"}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />

@@ -186,7 +186,7 @@ export function checkOrientedRectsCollide(rectA, rectB) {
  * @param {string|null} [excludeTeamId]
  * @returns {string|null} ID kolidującego teamu lub null, jeśli miejsce jest wolne
  */
-export function checkTeamCollidesWithOthers(targetTeam, allTeams, pixelsPerMeter, excludeTeamId = null) {
+export function checkTeamCollidesWithOthers(targetTeam, allTeams, pixelsPerMeter, excludeTeamId = null, obstacles = []) {
   const targetRect = {
     x: targetTeam.x,
     y: targetTeam.y,
@@ -194,6 +194,24 @@ export function checkTeamCollidesWithOthers(targetTeam, allTeams, pixelsPerMeter
     heightPx: targetTeam.heightMeters * pixelsPerMeter,
     rotationDegrees: targetTeam.rotation || 0,
   };
+
+  // 1. Sprawdzanie kolizji z przeszkodami (słupkami)
+  if (obstacles && obstacles.length > 0) {
+    for (const obs of obstacles) {
+      const obsRect = {
+        x: obs.x,
+        y: obs.y,
+        widthPx: obs.widthMeters * pixelsPerMeter,
+        heightPx: obs.heightMeters * pixelsPerMeter,
+        rotationDegrees: 0,
+      };
+      if (checkOrientedRectsCollide(targetRect, obsRect)) {
+        return obs.id; // Zwracamy ID przeszkody
+      }
+    }
+  }
+
+  // 2. Sprawdzanie kolizji z innymi teamami
 
   for (const other of allTeams) {
     if (other.id === targetTeam.id || other.id === excludeTeamId) continue;
@@ -217,17 +235,18 @@ export function checkTeamCollidesWithOthers(targetTeam, allTeams, pixelsPerMeter
  * @param {object} node - Proponowany obiekt teamu (z x, y, widthMeters, heightMeters, rotation)
  * @param {Array<object>} existingTeams - Aktualna lista naczep na torze
  * @param {number} pixelsPerMeter - Skala px/m
+ * @param {Array<object>} obstacles - Lista przeszkód
  * @returns {object} Zwraca obiekt z nowymi pozycjami x i y bez kolizji
  */
-export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter) {
+export function findCleanSpotForNode(node, existingTeams, pixelsPerMeter, obstacles = []) {
   let candidate = { ...node };
-  if (!checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id)) {
+  if (!checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id, obstacles)) {
     return candidate;
   }
 
   let step = 0;
   // Przeszkukuj po spirali do 30 prób, przesuwając o kilkadziesiąt pikseli/metrów
-  while (checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id) && step < 35) {
+  while (checkTeamCollidesWithOthers(candidate, existingTeams, pixelsPerMeter, candidate.id, obstacles) && step < 35) {
     step++;
     const angle = step * 0.65;
     const radius = (Math.floor(step / 2) + 1) * (Math.min(node.widthMeters, node.heightMeters) * pixelsPerMeter * 0.6);

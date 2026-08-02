@@ -13,8 +13,12 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   onUpdateGuideLines,
   measurements = [],
   onUpdateMeasurements,
+  obstacles = [],
+  onUpdateObstacles,
   selectedTeamId,
   onSelectTeam,
+  selectedObstacleId,
+  onSelectObstacle,
   allowCollisions = false,
   onToggleCollisions,
   enableMagnet = false,
@@ -342,7 +346,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       };
 
       if (!allowCollisions) {
-        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter);
+        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, pixelsPerMeter, obstacles);
       }
       if (enableMagnet) {
         const snapped = findCombinedMagneticSnap(newTeamNode, placedTeams, guideLines, pixelsPerMeter);
@@ -467,7 +471,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       }
     }
 
-    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id, obstacles);
 
     if (!allowCollisions && collidedId) {
       // BLOKADA: przywróć ostatnią prawidłową pozycję
@@ -522,7 +526,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       }
     }
 
-    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId, obstacles);
     if (!allowCollisions && collidedId) {
       const lastValid = lastValidCoordsRef.current[selectedTeamId] || { x: target.x, y: target.y, rotation: target.rotation || 0 };
       node.x(lastValid.x);
@@ -542,9 +546,17 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // ZADANIE 6 & 9: Obsługa precyzyjnych przesunięć z D-Pad (z kontrolą kolizji)
   const handleDPadMove = (dxMeters, dyMeters) => {
-    if (!selectedTeamId) return;
     const dxPx = dxMeters * pixelsPerMeter;
     const dyPx = dyMeters * pixelsPerMeter;
+
+    if (selectedObstacleId && obstacles) {
+      const targetObs = obstacles.find((o) => o.id === selectedObstacleId);
+      if (!targetObs || targetObs.locked) return;
+      onUpdateObstacles(obstacles.map(o => o.id === selectedObstacleId ? { ...o, x: o.x + dxPx, y: o.y + dyPx } : o));
+      return;
+    }
+
+    if (!selectedTeamId) return;
 
     const target = placedTeams.find((t) => t.id === selectedTeamId);
     if (!target) return;
@@ -567,7 +579,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       }
     }
 
-    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId, obstacles);
     if (!allowCollisions && collidedId) {
       setCollisionToast('Przesunięcie zablokowane! Naczepa nachodzi na sąsiedni zespół.');
       return;
@@ -580,16 +592,17 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // ZADANIE 6 & 9: Obsługa obrotów z D-Pad (z kontrolą kolizji)
   const handleDPadRotate = (deltaAngle) => {
+    if (selectedObstacleId) return; // Przeszkody się nie obracają
     if (!selectedTeamId) return;
     const target = placedTeams.find((t) => t.id === selectedTeamId);
-    if (!target) return;
+    if (!target || target.isLocked) return;
 
     const candidate = {
       ...target,
       rotation: (target.rotation + deltaAngle + 360) % 360,
     };
 
-    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId);
+    const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, selectedTeamId, obstacles);
     if (!allowCollisions && collidedId) {
       setCollisionToast('Obrót zablokowany! Naczepa zahacza o sąsiedni zespół.');
       return;
@@ -602,7 +615,11 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // ZADANIE 6: Obsługa szybkiej korekty wymiarów z D-Pad
   const handleDPadResize = (dwMeters, dhMeters) => {
+    if (selectedObstacleId) return; // Przeszkód nie skalujemy z DPad (mają stały wymiar)
     if (!selectedTeamId) return;
+    const target = placedTeams.find(t => t.id === selectedTeamId);
+    if (target && target.isLocked) return;
+
     const updated = placedTeams.map((t) => {
       if (t.id === selectedTeamId) {
         return {
@@ -663,6 +680,11 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   };
 
   const handleToggleLock = () => {
+    if (selectedObstacleId && obstacles) {
+      onUpdateObstacles(obstacles.map(o => o.id === selectedObstacleId ? { ...o, locked: !o.locked } : o));
+      return;
+    }
+    
     if (!selectedTeamId) return;
     const updated = placedTeams.map((t) => {
       if (t.id === selectedTeamId) {
@@ -741,6 +763,15 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   };
 
   const selectedTeamObj = placedTeams.find((t) => t.id === selectedTeamId) || null;
+  const selectedObstacleObj = obstacles ? obstacles.find(o => o.id === selectedObstacleId) : null;
+  const dpadTarget = selectedTeamObj || (selectedObstacleObj ? {
+    id: selectedObstacleObj.id,
+    name: 'Przeszkoda (Słupek)',
+    widthMeters: selectedObstacleObj.widthMeters,
+    heightMeters: selectedObstacleObj.heightMeters,
+    isLocked: selectedObstacleObj.locked,
+    isObstacle: true
+  } : null);
 
   return (
     <div
@@ -982,7 +1013,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                       }
                     }
                   }
-                  const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id);
+                  const collidedId = checkTeamCollidesWithOthers(candidate, placedTeams, pixelsPerMeter, team.id, obstacles);
                   if (collidedId) {
                     if (!allowCollisions) {
                       // Blokuj ruch — przywróć ostatnią prawidłową pozycję
@@ -1056,7 +1087,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                                siblingElements.push(getGlobalElement(team, pel));
                              });
                              
-                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id);
+                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id, obstacles);
                              if (collidedElId) {
                                // Przywróć ostatnią prawidłową pozycję
                                const lastValid = lastValidCoordsRef.current[`el_${el.id}`] || { x: el.offsetX * pixelsPerMeter, y: el.offsetY * pixelsPerMeter };
@@ -1120,7 +1151,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                                if (pel.id === el.id) return;
                                siblingElements.push(getGlobalElement(team, pel));
                              });
-                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id);
+                             const collidedElId = checkTeamCollidesWithOthers(candidateGlobal, siblingElements, pixelsPerMeter, el.id, obstacles);
                              if (collidedElId) {
                                // Przywróć oryginalną pozycję
                                e.target.x(el.offsetX * pixelsPerMeter);
@@ -1251,6 +1282,83 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               </Group>
             );
           })}
+          
+          {/* Przeszkody (Słupki / Latarnie) */}
+          {(obstacles || []).map((obs) => {
+            const isSelected = selectedObstacleId === obs.id;
+            const sizePx = (obs.widthMeters || 0.5) * pixelsPerMeter;
+            return (
+              <Group
+                key={obs.id}
+                x={obs.x}
+                y={obs.y}
+                draggable={!obs.locked}
+                onDragStart={(e) => {
+                  e.cancelBubble = true;
+                  if (onSelectTeam) onSelectTeam(null);
+                  setSelectedLine(null);
+                  if (onSelectObstacle) onSelectObstacle(obs.id);
+                }}
+                onDragEnd={(e) => {
+                  e.cancelBubble = true;
+                  const newX = e.target.x();
+                  const newY = e.target.y();
+                  if (onUpdateObstacles) {
+                    onUpdateObstacles(obstacles.map(o => o.id === obs.id ? { ...o, x: newX, y: newY } : o));
+                  }
+                }}
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  if (onSelectTeam) onSelectTeam(null);
+                  setSelectedLine(null);
+                  if (onSelectObstacle) onSelectObstacle(obs.id);
+                }}
+                onTap={(e) => {
+                  e.cancelBubble = true;
+                  if (onSelectTeam) onSelectTeam(null);
+                  setSelectedLine(null);
+                  if (onSelectObstacle) onSelectObstacle(obs.id);
+                }}
+              >
+                <Rect
+                  width={sizePx}
+                  height={sizePx}
+                  fill="transparent"
+                  stroke={isSelected ? '#ffffff' : 'transparent'}
+                  strokeWidth={2 / stageScale}
+                  dash={[4, 4]}
+                />
+                <Circle
+                  x={sizePx / 2}
+                  y={sizePx / 2}
+                  radius={sizePx / 2}
+                  fill="#ea580c"
+                  stroke={isSelected ? '#ffffff' : '#9a3412'}
+                  strokeWidth={2 / stageScale}
+                  shadowColor="#000"
+                  shadowBlur={isSelected ? 10 : 4}
+                  shadowOpacity={0.5}
+                />
+                <Circle
+                  x={sizePx / 2}
+                  y={sizePx / 2}
+                  radius={sizePx / 5}
+                  fill="#f97316"
+                  listening={false}
+                />
+                {obs.locked && (
+                  <Text
+                    text="🔒"
+                    x={sizePx / 2 - (6 / stageScale)}
+                    y={sizePx / 2 - (6 / stageScale)}
+                    fontSize={12 / stageScale}
+                    listening={false}
+                  />
+                )}
+              </Group>
+            );
+          })}
+
           {/* 1.6 Linie pomiarowe (linijka odległości) - Przeniesione na sam dół (z-index na wierzchu) */}
             {(measurements || []).map((m) => {
               const isSelected = selectedLine && selectedLine.id === m.id && selectedLine.type === 'measure';
@@ -1386,7 +1494,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
           {/* ZADANIE 6: react-konva Transformer z obracaniem i skokiem co 0.5m w świecie fizycznym */}
           {/* react-konva Transformer z obracaniem z rogów (wyłączona opcja zmiany wymiarów, sztywny metraż!) */}
-          {selectedTeamId && !selectedElementId && (
+          {selectedTeamId && !selectedElementId && selectedTeamObj && !selectedTeamObj.isLocked && (
             <Transformer
               ref={trRef}
               resizeEnabled={false} // Całkowita blokada skalowania na płótnie!
@@ -1405,7 +1513,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
           )}
 
           {/* Transformer dla pojedynczego pojazdu w rozgrupowanym zespole */}
-          {selectedTeamId && selectedElementId && (
+          {selectedTeamId && selectedElementId && selectedTeamObj && !selectedTeamObj.isLocked && (
             <Transformer
               ref={elTrRef}
               resizeEnabled={false} 
@@ -1457,11 +1565,14 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
       {/* ZADANIE 6: Szklany Panel D-Pad na dole ekranu (Rozwiązanie "Grubego Palca") */}
       <DPadControls
-        selectedTeam={selectedTeamObj}
+        selectedTeam={dpadTarget}
         onMove={handleDPadMove}
         onRotate={handleDPadRotate}
         onResize={handleDPadResize}
-        onDeselect={() => onSelectTeam && onSelectTeam(null)}
+        onDeselect={() => {
+          if (onSelectTeam) onSelectTeam(null);
+          if (onSelectObstacle) onSelectObstacle(null);
+        }}
         onToggleLock={handleToggleLock}
         pixelsPerMeter={pixelsPerMeter}
       />
@@ -1601,7 +1712,33 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                     🗑️
                   </button>
                 )}
+                )}
               </div>
+
+              {/* Dodaj Przeszkodę (Słupek) */}
+              <button
+                onClick={() => {
+                  if (onUpdateObstacles && obstacles) {
+                    const center = getViewportCenterRef && getViewportCenterRef.current ? getViewportCenterRef.current() : { x: 50 * pixelsPerMeter, y: 50 * pixelsPerMeter };
+                    const newObs = {
+                      id: 'obs-' + Date.now(),
+                      x: center.x,
+                      y: center.y,
+                      widthMeters: 0.5,
+                      heightMeters: 0.5,
+                      locked: false,
+                    };
+                    onUpdateObstacles([...obstacles, newObs]);
+                    if (onSelectObstacle) onSelectObstacle(newObs.id);
+                    if (onSelectTeam) onSelectTeam(null);
+                    setSelectedLine(null);
+                  }
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-orange-600 border border-orange-400 text-white shadow-orange-500/30 text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2 hover:bg-orange-500"
+                title="Dodaj przeszkodę (np. latarnię, słupek), na którą nie będzie można nałożyć namiotu"
+              >
+                <span>🚧 Dodaj Przeszkodę</span>
+              </button>
 
               {/* Toggle Magnesu */}
               {onToggleMagnet && (
