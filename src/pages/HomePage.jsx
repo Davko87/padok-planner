@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters, calculateHaversineDistanceMeters } from '../lib/geoUtils.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -475,6 +475,20 @@ function HomePage() {
     }
   };
 
+  // Funkcja Usuwająca Padok
+  const handleDeleteEvent = async (event) => {
+    if (!window.confirm(`Czy na pewno chcesz usunąć projekt "${event.name}"? Tej operacji nie można cofnąć.`)) {
+      return;
+    }
+    
+    try {
+      await deleteDoc(doc(db, 'events', event.id));
+    } catch (error) {
+      console.error('Błąd podczas usuwania projektu:', error);
+      alert('Wystąpił błąd podczas usuwania projektu.');
+    }
+  };
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#040611] font-sans select-none">
 
@@ -612,14 +626,23 @@ function HomePage() {
                         </p>
                       </button>
                       
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event); }}
-                        disabled={isDuplicating}
-                        title="Zduplikuj ten układ (Szablon)"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-400/30 rounded-lg transition-all text-indigo-200 hover:text-white"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                      </button>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event); }}
+                          disabled={isDuplicating}
+                          title="Zduplikuj ten układ (Szablon)"
+                          className="p-2 bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-400/30 rounded-lg transition-all text-indigo-200 hover:text-white"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }}
+                          title="Usuń ten padok"
+                          className="p-2 bg-red-500/20 hover:bg-red-500/40 border border-red-400/30 rounded-lg transition-all text-red-300 hover:text-white"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
