@@ -210,7 +210,7 @@ function PlannerPage() {
       try {
         setSaveStatus('saving');
         const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-        const updated = { ...current, teams: placedTeams, guideLines, measurements, updatedAt: Date.now() };
+        const updated = { ...current, teams: placedTeams, guideLines, measurements, obstacles, updatedAt: Date.now() };
         localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
         setSaveStatus('saved');
         setToastMessage('Projekt (lokalny) został pomyślnie zapisany!');
@@ -232,6 +232,7 @@ function PlannerPage() {
         teams: placedTeams,
         guideLines,
         measurements,
+        obstacles,
         createdAt: eventData?.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -316,7 +317,7 @@ function PlannerPage() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [placedTeams, guideLines, measurements, eventId]);
+  }, [placedTeams, guideLines, measurements, obstacles, eventId]);
 
   // Obsługa kliknięcia "+" w katalogu teamów -> dodaje na wolne miejsce w pobliżu środka sceny
   const handleSelectTeamFromCatalog = (teamTemplate) => {
@@ -415,7 +416,7 @@ function PlannerPage() {
       };
 
       if (!allowCollisions) {
-        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, currentPpm);
+        newTeamNode = findCleanSpotForNode(newTeamNode, placedTeams, currentPpm, obstacles);
       }
       if (enableMagnet) {
         const snapped = findMagneticSnapPosition(newTeamNode, placedTeams, currentPpm, 4.0);
