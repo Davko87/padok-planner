@@ -1348,7 +1348,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 />
                 {obs.locked && (
                   <Text
-                    text="🔒"
+                    text="⛔️"
                     x={sizePx / 2 - (6 / stageScale)}
                     y={sizePx / 2 - (6 / stageScale)}
                     fontSize={12 / stageScale}
