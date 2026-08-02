@@ -84,7 +84,7 @@ export function LoginModal({ isOpen, onClose, onSwitchToRegister }) {
               type="text"
               value={nick}
               onChange={(e) => setNick(e.target.value)}
-              placeholder="np. Davko"
+              placeholder="np. Nazwa"
               required
               className="glass-input w-full"
             />
@@ -308,7 +308,7 @@ export function RegisterModal({ isOpen, onClose, onSwitchToLogin }) {
               type="text"
               value={nick}
               onChange={(e) => setNick(e.target.value)}
-              placeholder="np. Davko"
+              placeholder="np. Nazwa"
               required
               className={`w-full bg-black/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none transition-all font-medium ${
                 isNickAvailable === true
