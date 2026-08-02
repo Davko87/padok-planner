@@ -668,6 +668,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       if (t.id === selectedTeamId) {
         if (t.isLocked === false) {
            // Blokujemy zespół (GRUPA) -> przeliczamy dynamicznie bounding box dla luźnych pojazdów
+           setSelectedElementId(null); // ZADANIE: Odznacz element przy zablokowaniu, żeby zniknęła ramka obrotu!
+           
            if (!t.elements || t.elements.length === 0) return { ...t, isLocked: true };
            
            let minX = Infinity; let maxX = -Infinity;
