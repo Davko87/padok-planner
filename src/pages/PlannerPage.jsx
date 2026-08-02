@@ -231,23 +231,26 @@ function PlannerPage() {
         updatedAt: serverTimestamp(),
       };
 
-      if (!currentUser) return; // Gość nie może zapisywać na serwerze
-
-      const writePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
-
-      // Nie czekamy (await) na pełną synchronizację, bo przy słabym internecie
-      // Firebase kolejkuje to w cache i promise może wisieć. Zamiast tego łapiemy ewentualny błąd w tle.
-      writePromise.catch((err) => {
-        console.error('Błąd zapisu w tle do Firestore:', err);
+      if (!currentUser) {
         setSaveStatus('error');
-      });
+        setToastMessage('Zaloguj się, aby zapisać w chmurze!');
+        setTimeout(() => setToastMessage(''), 3500);
+        return;
+      }
+
+      const savePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+      
+      await Promise.race([savePromise, timeoutPromise]);
 
       setSaveStatus('saved');
-      setToastMessage('Projekt został pomyślnie zapisany!');
+      setToastMessage('Projekt został pomyślnie zapisany w chmurze!');
       setTimeout(() => setToastMessage(''), 3500);
     } catch (err) {
       console.error('Błąd ręcznego zapisu układu do Firestore:', err);
       setSaveStatus('error');
+      setToastMessage('Błąd zapisu! Sprawdź połączenie.');
+      setTimeout(() => setToastMessage(''), 3500);
     }
   };
 
