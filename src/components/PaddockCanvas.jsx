@@ -1183,26 +1183,33 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                         {el.type === 'tent' && <TentAsset color={team.color} width={elW} height={elH} />}
                         {el.type === 'towTruck' && <TowTruckAsset color={team.color} width={elW} height={elH} />}
 
-                        {el.id === labelElementId && (
-                          <Text
-                            text={team.name}
-                            x={elW}
-                            y={0}
-                            width={elH}
-                            height={elW}
-                            rotation={90}
-                            align="center"
-                            verticalAlign="middle"
-                            fill="rgba(255, 255, 255, 0.95)"
-                            fontSize={Math.max(4, elW * 0.55)}
-                            fontFamily="Inter, system-ui, sans-serif"
-                            fontStyle="bold"
-                            wrap="none"
-                            listening={false}
-                            opacity={nameOpacity}
-                            visible={isNameVisible}
-                          />
-                        )}
+                        {el.id === labelElementId && (() => {
+                          const nameLen = Math.max(1, (team.name || '').length);
+                          const maxFontSizeByLength = (elH - 4) / (nameLen * 0.55);
+                          const maxFontSizeByWidth = elW * 0.7;
+                          const labelFontSize = Math.max(4, Math.min(maxFontSizeByLength, maxFontSizeByWidth));
+                          
+                          return (
+                            <Text
+                              text={team.name}
+                              x={elW}
+                              y={0}
+                              width={elH}
+                              height={elW}
+                              rotation={90}
+                              align="center"
+                              verticalAlign="middle"
+                              fill="rgba(255, 255, 255, 0.95)"
+                              fontSize={labelFontSize}
+                              fontFamily="Inter, system-ui, sans-serif"
+                              fontStyle="bold"
+                              wrap="none"
+                              listening={false}
+                              opacity={nameOpacity}
+                              visible={isNameVisible}
+                            />
+                          );
+                        })()}
                       </Group>
                     );
                   })
