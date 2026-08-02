@@ -6,6 +6,19 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore';
 
+// AUTO-RECOVERY: Zabezpieczenie przed uszkodzeniem bazy po "Clear site data"
+if (!localStorage.getItem('idb_wiped_v2')) {
+  try {
+    indexedDB.deleteDatabase('firestore/[DEFAULT]/padok-planner-app/main');
+    indexedDB.deleteDatabase('firebaseLocalStorageDb');
+    localStorage.setItem('idb_wiped_v2', 'true');
+    console.log('IndexedDB caches automatically cleared to fix potential corruption.');
+  } catch (e) {
+    console.warn('Błąd podczas czyszczenia IndexedDB:', e);
+  }
+}
+
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAwgat3c67bYievuKO6qE_2UiZ4KkhVSDc',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'padok-planner-app.firebaseapp.com',
