@@ -134,13 +134,12 @@ function PlannerPage() {
             ...prev,
             ...data
           }));
-          
-          // Jeśli gość (nie zalogowany), ładujemy układy publiczne z głównego eventu
-          if (!currentUser && !hasLoadedInitialTeams.current) {
+          // Zawsze ładujemy układ z głównego dokumentu jako bazę (dla gości lub starszych projektów)
+          if (!hasLoadedInitialTeams.current || hasLoadedInitialTeams.current === 'from_main') {
             setPlacedTeams(data.teams || []);
             setGuideLines(data.guideLines || []);
             setMeasurements(data.measurements || []);
-            hasLoadedInitialTeams.current = true;
+            hasLoadedInitialTeams.current = 'from_main';
           }
           setErrorEvent(null);
         } else if (!trackPreset) {
@@ -174,22 +173,14 @@ function PlannerPage() {
       unsubscribeLayout = onSnapshot(layoutRef, (layoutSnap) => {
         if (layoutSnap.exists()) {
           const layoutData = layoutSnap.data();
-          if (!hasLoadedInitialTeams.current) {
+          if (hasLoadedInitialTeams.current !== 'from_layout') {
             setPlacedTeams(layoutData.teams || []);
             setGuideLines(layoutData.guideLines || []);
             setMeasurements(layoutData.measurements || []);
-            hasLoadedInitialTeams.current = true;
-          }
-        } else {
-          // Brak własnego układu na serwerze - pusta, czysta karta na start!
-          // Upewniamy się, że to odpowiedź z serwera, a nie pusty cache!
-          if (!hasLoadedInitialTeams.current && !layoutSnap.metadata.fromCache) {
-            setPlacedTeams([]);
-            setGuideLines([]);
-            setMeasurements([]);
-            hasLoadedInitialTeams.current = true;
+            hasLoadedInitialTeams.current = 'from_layout';
           }
         }
+        // Jeśli nie istnieje, zostawiamy to, co pobrał główny onSnapshot eventu (dla kompatybilności wstecznej)
       });
     }
 

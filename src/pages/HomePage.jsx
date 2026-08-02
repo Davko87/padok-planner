@@ -55,7 +55,6 @@ function HomePage() {
   // Moje Wydarzenia
   const [myEvents, setMyEvents] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
-  const [isDuplicating, setIsDuplicating] = useState(false);
   const fallbackUnsubRef = useRef(null);
 
   // Pobieranie "Moich Padoków" po zalogowaniu
@@ -113,42 +112,6 @@ function HomePage() {
       if (fallbackUnsubRef.current) fallbackUnsubRef.current();
     };
   }, [currentUser]);
-
-  // Funkcja Duplikująca Padok
-  const handleDuplicateEvent = async (event) => {
-    if (isDuplicating) return;
-    setIsDuplicating(true);
-    
-    try {
-      // 1. Kopiuj główny dokument wydarzenia
-      const newEventData = {
-        ...event,
-        name: event.name + ' - Kopia',
-        createdAt: serverTimestamp(),
-      };
-      delete newEventData.id;
-
-      const newEventRef = await addDoc(collection(db, 'events'), newEventData);
-
-      // 2. Pobierz wszystkie pojazdy (placedTeams) z oryginalnego wydarzenia
-      const teamsRef = collection(db, 'events', event.id, 'placedTeams');
-      const teamsSnapshot = await getDocs(teamsRef);
-
-      // 3. Skopiuj każdy pojazd do subkolekcji nowego wydarzenia
-      for (const teamDoc of teamsSnapshot.docs) {
-        const teamData = teamDoc.data();
-        await addDoc(collection(db, 'events', newEventRef.id, 'placedTeams'), teamData);
-      }
-
-      // 4. Przekieruj do nowego sklonowanego wydarzenia
-      navigate(`/planner/${newEventRef.id}`);
-    } catch (err) {
-      console.error('Błąd podczas duplikacji:', err);
-      alert('Nie udało się sklonować projektu.');
-    } finally {
-      setIsDuplicating(false);
-    }
-  };
 
   // Inicjalizacja usług Google Places
   useEffect(() => {
@@ -627,14 +590,6 @@ function HomePage() {
                       </button>
                       
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event); }}
-                          disabled={isDuplicating}
-                          title="Zduplikuj ten układ (Szablon)"
-                          className="p-2 bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-400/30 rounded-lg transition-all text-indigo-200 hover:text-white"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }}
                           title="Usuń ten padok"
