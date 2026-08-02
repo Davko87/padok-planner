@@ -56,6 +56,7 @@ function HomePage() {
   const [myEvents, setMyEvents] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const fallbackUnsubRef = useRef(null);
 
   // Pobieranie "Moich Padoków" po zalogowaniu
   useEffect(() => {
@@ -64,6 +65,7 @@ function HomePage() {
       return;
     }
 
+    // Próbujemy z indeksem złożonym (ownerId + createdAt desc)
     const q = query(
       collection(db, 'events'),
       where('ownerId', '==', currentUser.uid),
@@ -79,11 +81,37 @@ function HomePage() {
       setMyEvents(eventsList);
       setIsLoadingEvents(false);
     }, (err) => {
-      console.error('Błąd podczas pobierania projektów:', err);
-      setIsLoadingEvents(false);
+      console.error('Błąd indeksu złożonego, próbuję fallback bez orderBy:', err);
+      // Fallback: zapytanie BEZ orderBy (nie wymaga indeksu złożonego)
+      const fallbackQ = query(
+        collection(db, 'events'),
+        where('ownerId', '==', currentUser.uid)
+      );
+      const fallbackUnsub = onSnapshot(fallbackQ, (snap) => {
+        const eventsList = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        // Sortujemy po stronie klienta
+        eventsList.sort((a, b) => {
+          const aTime = a.createdAt?.seconds || a.createdAt || 0;
+          const bTime = b.createdAt?.seconds || b.createdAt || 0;
+          return bTime - aTime;
+        });
+        setMyEvents(eventsList);
+        setIsLoadingEvents(false);
+      }, (fallbackErr) => {
+        console.error('Błąd podczas pobierania projektów (fallback):', fallbackErr);
+        setIsLoadingEvents(false);
+      });
+      // Zapamiętujemy fallback unsubscribe do cleanup
+      fallbackUnsubRef.current = fallbackUnsub;
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (fallbackUnsubRef.current) fallbackUnsubRef.current();
+    };
   }, [currentUser]);
 
   // Funkcja Duplikująca Padok
