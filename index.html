@@ -9,11 +9,21 @@
     <link rel="apple-touch-icon" href="./pwa-192x192.svg" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <title>Padok Planner</title>
-    <script type="module" crossorigin src="./assets/index-CpUlKtZW.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+            console.log('Service Worker unregistered to force cache clear.');
+          }
+        });
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-BY75S73E.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/react-vendor-DL8MyD2L.js">
-    <link rel="modulepreload" crossorigin href="./assets/konva-vendor-DOzsM2Tg.js">
-    <link rel="modulepreload" crossorigin href="./assets/firebase-vendor-DcnDZUIA.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-yu-vjk5X.css">
+    <link rel="modulepreload" crossorigin href="./assets/konva-vendor-B8fsRidi.js">
+    <link rel="modulepreload" crossorigin href="./assets/firebase-vendor-D7RQZTg4.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-CZYxTkqi.css">
   <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
   <body class="bg-slate-950 text-white antialiased">
     <div id="root"></div>
