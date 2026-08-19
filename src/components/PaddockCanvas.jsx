@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperat
 import { Stage, Layer, Rect, Text, Group, Transformer, Line, Circle, Path } from 'react-konva';
 import { Map3D } from '@vis.gl/react-google-maps';
 import DPadControls from './DPadControls.jsx';
-import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition, findCombinedMagneticSnap } from '../lib/geoUtils.js';
+import { checkTeamCollidesWithOthers, findCleanSpotForNode, findMagneticSnapPosition, findCombinedMagneticSnap, buildStaticMapUrl } from '../lib/geoUtils.js';
 import { TruckAsset, AwningAsset, VanAsset, CarAsset, TentAsset, TowTruckAsset } from './vehicles/VectorAssets.jsx';
 
 const PaddockCanvas = forwardRef(function PaddockCanvas({
@@ -28,6 +28,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
   onRequestDuplicateConfirm,
 }, ref) {
   const containerRef = useRef(null);
+  const mapContainerRef = useRef(null);
   const stageRef = useRef(null);
   const trRef = useRef(null);
   const elTrRef = useRef(null); // Drugi transformer dla indywidualnych elementów
@@ -116,7 +117,48 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   // Google Maps używane jako tło interaktywne
 
-  // EKSPORT: udostępnij metodę exportAsImage() z bezpieczną obsługą tainted canvas w razie blokad CORS na serwerach Esri
+  // Pomocnicze funkcje przechwytujące kadr WebGL z aktywnej mapy Google Maps 3D (gmp-map-3d)
+  const findMapCanvas = (containerEl) => {
+    if (!containerEl) containerEl = document.body;
+    const gmpMap3d = containerEl.querySelector('gmp-map-3d') || document.querySelector('gmp-map-3d');
+    if (!gmpMap3d) return null;
+
+    if (gmpMap3d.shadowRoot) {
+      const c = gmpMap3d.shadowRoot.querySelector('canvas');
+      if (c) return c;
+    }
+    const directCanvas = gmpMap3d.querySelector('canvas');
+    if (directCanvas) return directCanvas;
+
+    const allNodes = [gmpMap3d, ...(gmpMap3d.shadowRoot ? Array.from(gmpMap3d.shadowRoot.querySelectorAll('*')) : [])];
+    for (const node of allNodes) {
+      if (node.shadowRoot) {
+        const c = node.shadowRoot.querySelector('canvas');
+        if (c) return c;
+      }
+    }
+    return containerEl.querySelector('canvas');
+  };
+
+  const captureMapCanvasImage = async (mapCanvas) => {
+    if (!mapCanvas) return null;
+    try {
+      const copyCanvas = document.createElement('canvas');
+      copyCanvas.width = mapCanvas.width || mapCanvas.clientWidth || 1024;
+      copyCanvas.height = mapCanvas.height || mapCanvas.clientHeight || 1024;
+      const ctx = copyCanvas.getContext('2d');
+      ctx.drawImage(mapCanvas, 0, 0, copyCanvas.width, copyCanvas.height);
+      const dataUrl = copyCanvas.toDataURL('image/png');
+      if (dataUrl && dataUrl.length > 1000) {
+        return dataUrl;
+      }
+    } catch (e) {
+      console.warn('Błąd odczytu płótna WebGL z Google Maps 3D:', e);
+    }
+    return null;
+  };
+
+  // EKSPORT: Przechwyć kadr WebGL z ekranu z Google Maps 3D i połącz z warstwą autek
   useImperativeHandle(ref, () => ({
     exportAsImage: async () => {
       const stage = stageRef.current;
@@ -131,6 +173,10 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         trRef.current.nodes([]);
         trRef.current.getLayer()?.batchDraw();
       }
+      if (elTrRef.current) {
+        elTrRef.current.nodes([]);
+        elTrRef.current.getLayer()?.batchDraw();
+      }
 
       const exportW = 1024;
       const exportH = 1024;
@@ -143,10 +189,68 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       let finalDataUrl = null;
 
       try {
-        // Z Google Maps w tle (WebGL), toDataURL canvasa i tak wyeksportuje tylko zespoły (tło jest html-em pod canvasem)
         const teamsLayer = stage.findOne('#teams-layer');
-        finalDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
+        const teamsDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
+
+        // 1. Próbujemy przechwycić kadr bezpośrednio z wyrenderowanej mapy WebGL (gmp-map-3d)
+        let bgDataUrl = null;
+        const mapCanvas = findMapCanvas(mapContainerRef.current);
+        if (mapCanvas) {
+          bgDataUrl = await captureMapCanvasImage(mapCanvas);
+        }
+
+        // 2. Jeśli bezpośrednie kopiowanie WebGL zwróciło puste płótno, używamy html2canvas na kontenerze mapy
+        if (!bgDataUrl && mapContainerRef.current) {
+          try {
+            const html2canvasLib = (await import('html2canvas')).default;
+            const htmlCanvas = await html2canvasLib(mapContainerRef.current, {
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+              backgroundColor: null,
+            });
+            if (htmlCanvas) {
+              bgDataUrl = htmlCanvas.toDataURL('image/png');
+            }
+          } catch (e) {
+            console.warn('Błąd html2canvas:', e);
+          }
+        }
+
+        if (bgDataUrl && teamsDataUrl) {
+          // Łączymy przechwycone tło Google Maps 3D z warstwą autek
+          finalDataUrl = await new Promise((resolve) => {
+            const bgImg = new window.Image();
+            bgImg.onload = () => {
+              const fgImg = new window.Image();
+              fgImg.onload = () => {
+                const offscreenCanvas = document.createElement('canvas');
+                offscreenCanvas.width = fgImg.width || 2048;
+                offscreenCanvas.height = fgImg.height || 2048;
+                const ctx = offscreenCanvas.getContext('2d');
+
+                // Rysujemy tło przechwycone z Google Maps 3D
+                ctx.drawImage(bgImg, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                // Rysujemy autka na wierzchu
+                ctx.drawImage(fgImg, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+                try {
+                  resolve(offscreenCanvas.toDataURL('image/png'));
+                } catch (e) {
+                  resolve(teamsDataUrl);
+                }
+              };
+              fgImg.onerror = () => resolve(teamsDataUrl);
+              fgImg.src = teamsDataUrl;
+            };
+            bgImg.onerror = () => resolve(teamsDataUrl);
+            bgImg.src = bgDataUrl;
+          });
+        } else {
+          finalDataUrl = teamsDataUrl;
+        }
       } catch (err) {
+        console.error('Błąd podczas generowania obrazu płótna:', err);
         finalDataUrl = null;
       }
 
@@ -165,7 +269,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
       return finalDataUrl;
     },
-  }), [selectedTeamId, selectedElementId]);
+  }), [selectedTeamId, selectedElementId, eventData?.bounds]);
 
   // Oblicz pixelsPerMeter tak, aby szerokość obrazu w pikselach odpowiadała fizycznej szerokości w metrach z Firestore
   const imgWidth = 1024;
@@ -783,6 +887,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
       {/* Google Maps Tło (Zoom i Pan mapy jest sterowane przez CSS transform dla synchronizacji z Konva) */}
       {eventData?.bounds && (
         <div
+          ref={mapContainerRef}
           style={{
             position: 'absolute',
             top: 0,
