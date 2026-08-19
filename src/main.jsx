@@ -2,7 +2,7 @@
 // zwracał aktualny kadr, a nie pusty bufor. Musi być PRZED załadowaniem Google Maps.
 const _origGetContext = HTMLCanvasElement.prototype.getContext;
 HTMLCanvasElement.prototype.getContext = function (type, attrs) {
-  if (type === 'webgl' || type === 'webgl2') {
+  if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
     attrs = Object.assign({}, attrs, { preserveDrawingBuffer: true });
   }
   return _origGetContext.call(this, type, attrs);

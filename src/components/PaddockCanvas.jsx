@@ -123,21 +123,37 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     const gmpMap3d = containerEl.querySelector('gmp-map-3d') || document.querySelector('gmp-map-3d');
     if (!gmpMap3d) return null;
 
-    if (gmpMap3d.shadowRoot) {
-      const c = gmpMap3d.shadowRoot.querySelector('canvas');
-      if (c) return c;
-    }
-    const directCanvas = gmpMap3d.querySelector('canvas');
-    if (directCanvas) return directCanvas;
+    // Rekurencyjna funkcja przeszukująca pełne drzewo DOM i Shadow DOM
+    const deepSearch = (node) => {
+      if (!node) return null;
+      if (node.tagName === 'CANVAS') return node;
 
-    const allNodes = [gmpMap3d, ...(gmpMap3d.shadowRoot ? Array.from(gmpMap3d.shadowRoot.querySelectorAll('*')) : [])];
-    for (const node of allNodes) {
+      // Szukamy w shadowRoot
       if (node.shadowRoot) {
-        const c = node.shadowRoot.querySelector('canvas');
-        if (c) return c;
+        const found = deepSearch(node.shadowRoot);
+        if (found) return found;
       }
-    }
-    return containerEl.querySelector('canvas');
+
+      // Szukamy w dzieciach elementu (light DOM)
+      if (node.children) {
+        for (let i = 0; i < node.children.length; i++) {
+          const found = deepSearch(node.children[i]);
+          if (found) return found;
+        }
+      }
+
+      // Szukamy w dzieciach shadowRoot
+      if (node.shadowRoot && node.shadowRoot.children) {
+        for (let i = 0; i < node.shadowRoot.children.length; i++) {
+          const found = deepSearch(node.shadowRoot.children[i]);
+          if (found) return found;
+        }
+      }
+
+      return null;
+    };
+
+    return deepSearch(gmpMap3d);
   };
 
   // EKSPORT "PRINT SCREEN": Przechwytuje dokładnie to, co widzi użytkownik na ekranie
