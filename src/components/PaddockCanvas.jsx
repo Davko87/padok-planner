@@ -142,6 +142,8 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
 
   const captureMapCanvasImage = async (mapCanvas) => {
     if (!mapCanvas) return null;
+    // Czekamy jedną klatkę, żeby WebGL zdążył wyrenderować bufor
+    await new Promise((r) => requestAnimationFrame(r));
     try {
       const copyCanvas = document.createElement('canvas');
       copyCanvas.width = mapCanvas.width || mapCanvas.clientWidth || 1024;
@@ -158,7 +160,32 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
     return null;
   };
 
-  // EKSPORT: Przechwyć kadr WebGL z ekranu z Google Maps 3D i połącz z warstwą autek
+  // Pobiera statyczny obraz satelitarny z Google Static Maps API (niezawodne, nie zależy od WebGL)
+  const fetchStaticMapAsDataUrl = async (bounds) => {
+    if (!bounds) return null;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+    const url = buildStaticMapUrl(bounds, apiKey, '');
+    if (!url) return null;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.warn('Static Maps API odpowiedział statusem:', resp.status);
+        return null;
+      }
+      const blob = await resp.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.warn('Błąd pobierania statycznej mapy:', e);
+      return null;
+    }
+  };
+
+  // EKSPORT: Pobiera statyczny obraz satelitarny i łączy z warstwą autek z Konva
   useImperativeHandle(ref, () => ({
     exportAsImage: async () => {
       const stage = stageRef.current;
@@ -192,33 +219,37 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         const teamsLayer = stage.findOne('#teams-layer');
         const teamsDataUrl = teamsLayer ? teamsLayer.toDataURL({ pixelRatio: 2, mimeType: 'image/png' }) : null;
 
-        // 1. Próbujemy przechwycić kadr bezpośrednio z wyrenderowanej mapy WebGL (gmp-map-3d)
+        // === POZYSKANIE TŁA SATELITARNEGO ===
         let bgDataUrl = null;
-        const mapCanvas = findMapCanvas(mapContainerRef.current);
-        if (mapCanvas) {
-          bgDataUrl = await captureMapCanvasImage(mapCanvas);
-        }
 
-        // 2. Jeśli bezpośrednie kopiowanie WebGL zwróciło puste płótno, używamy html2canvas na kontenerze mapy
-        if (!bgDataUrl && mapContainerRef.current) {
-          try {
-            const html2canvasLib = (await import('html2canvas')).default;
-            const htmlCanvas = await html2canvasLib(mapContainerRef.current, {
-              useCORS: true,
-              allowTaint: true,
-              logging: false,
-              backgroundColor: null,
-            });
-            if (htmlCanvas) {
-              bgDataUrl = htmlCanvas.toDataURL('image/png');
-            }
-          } catch (e) {
-            console.warn('Błąd html2canvas:', e);
+        // Priorytet 1: Statyczna mapa z Google Static Maps API (niezawodne)
+        if (eventData?.bounds) {
+          console.log('[Eksport] Pobieram tło z Google Static Maps API...');
+          bgDataUrl = await fetchStaticMapAsDataUrl(eventData.bounds);
+          if (bgDataUrl) {
+            console.log('[Eksport] ✓ Tło satelitarne pobrane z Static Maps API');
           }
         }
 
+        // Priorytet 2: Przechwycenie kadru z WebGL (bonus, może się udać po requestAnimationFrame)
+        if (!bgDataUrl) {
+          console.log('[Eksport] Static Maps nie zadziałało, próbuję przechwycić WebGL...');
+          const mapCanvas = findMapCanvas(mapContainerRef.current);
+          if (mapCanvas) {
+            bgDataUrl = await captureMapCanvasImage(mapCanvas);
+            if (bgDataUrl) {
+              console.log('[Eksport] ✓ Tło przechwycone z WebGL canvas');
+            }
+          }
+        }
+
+        if (!bgDataUrl) {
+          console.warn('[Eksport] ⚠ Nie udało się pozyskać tła satelitarnego — eksport samych elementów');
+        }
+
+        // === ZŁOŻENIE WARSTW ===
         if (bgDataUrl && teamsDataUrl) {
-          // Łączymy przechwycone tło Google Maps 3D z warstwą autek
+          // Łączymy tło satelitarne z warstwą autek
           finalDataUrl = await new Promise((resolve) => {
             const bgImg = new window.Image();
             bgImg.onload = () => {
@@ -229,9 +260,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 offscreenCanvas.height = fgImg.height || 2048;
                 const ctx = offscreenCanvas.getContext('2d');
 
-                // Rysujemy tło przechwycone z Google Maps 3D
+                // Rysujemy tło satelitarne
                 ctx.drawImage(bgImg, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-                // Rysujemy autka na wierzchu
+                // Rysujemy autka, linie, przeszkody na wierzchu
                 ctx.drawImage(fgImg, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
                 try {
