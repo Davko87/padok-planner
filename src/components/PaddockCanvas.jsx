@@ -183,7 +183,7 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
         let bgDataUrl = null;
         const mapCanvas = findMapCanvas(mapContainerRef.current);
         if (mapCanvas) {
-          console.log('[Eksport] Przechwytuję kadr z Google Maps 3D...');
+          console.log('[Eksport] Znaleziono canvas mapy. Próbuję przechwycić kadr...');
           try {
             const copyCanvas = document.createElement('canvas');
             copyCanvas.width = mapCanvas.width || mapCanvas.clientWidth || 1024;
@@ -196,12 +196,16 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
               console.log('[Eksport] ✓ Tło Google Maps 3D przechwycone (' + copyCanvas.width + 'x' + copyCanvas.height + ')');
             }
           } catch (e) {
-            console.warn('[Eksport] Błąd odczytu WebGL canvas:', e);
+            console.error('[Eksport] Błąd odczytu WebGL canvas (prawdopodobnie błąd zabezpieczeń CORS):', e);
+            alert('[Eksport] Błąd odczytu mapy (zabezpieczenia przeglądarki): ' + (e.message || e));
           }
+        } else {
+          console.warn('[Eksport] Nie znaleziono elementu canvas wewnątrz gmp-map-3d (Shadow DOM jest zamknięty lub puste)');
+          alert('[Eksport] Błąd: Nie znaleziono canvasu mapy satelitarnej. Upewnij się, że strona została w pełni załadowana.');
         }
 
         if (!bgDataUrl) {
-          console.warn('[Eksport] ⚠ Nie znaleziono canvas mapy — eksport samych elementów na ciemnym tle');
+          console.warn('[Eksport] ⚠ Brak tła satelitarnego — eksportuję tylko elementy Konva');
         }
 
         // 4. Przechwytujemy warstwę Konva (autka, linie, przeszkody) w pozycji 1:1
