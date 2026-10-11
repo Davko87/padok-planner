@@ -71,14 +71,14 @@ function HomePage() {
       localKeys.forEach(async (key) => {
         try {
           const item = JSON.parse(localStorage.getItem(key));
-          if (item && item.id) {
+          if (item && item.id && !item._syncedToCloud) {
             const rawItem = JSON.parse(JSON.stringify(item, (k, v) => (v === undefined ? null : v)));
             const cleanItem = sanitizeForFirestore(rawItem);
             cleanItem.name = cleanItem.name || 'Własny Padok';
             cleanItem.updatedAt = serverTimestamp();
             const docRef = doc(db, 'profiles', currentUser.uid, 'projects', item.id);
             await setDoc(docRef, cleanItem, { merge: true });
-            localStorage.setItem(key, JSON.stringify({ ...item, ...cleanItem, updatedAt: Date.now() }));
+            localStorage.setItem(key, JSON.stringify({ ...item, ...cleanItem, _syncedToCloud: true, updatedAt: Date.now() }));
           }
         } catch (e) {
           console.warn('Błąd migracji projektu lokalnego:', e);

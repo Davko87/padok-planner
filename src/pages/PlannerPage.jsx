@@ -37,11 +37,23 @@ function PlannerPage() {
   // ZADANIE 7: Tryb Offline i Zapis Padoku (stan zapisu i ref do odróżnienia inicjalizacji)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'pending' | 'error'
   const hasLoadedInitialTeams = useRef(false);
+  const lastSavedSnapshotRef = useRef('');
   const [toastMessage, setToastMessage] = useState('');
+
+  // Pomocnicza funkcja porównująca stan padoku (zapobiega pętli ping-pong autozapisu)
+  const getProjectStateHash = (teams, obs, guides, meas) => {
+    return JSON.stringify({
+      teams: teams || [],
+      obstacles: obs || [],
+      guideLines: guides || [],
+      measurements: meas || []
+    });
+  };
 
   // Wymuszenie ponownego wczytania padoku (wyczyszczenie stanu) gdy użytkownik się zaloguje/wyloguje
   useEffect(() => {
     hasLoadedInitialTeams.current = false;
+    lastSavedSnapshotRef.current = '';
   }, [currentUser?.uid]);
 
   useEffect(() => {
@@ -55,9 +67,12 @@ function PlannerPage() {
           setEventData(parsed);
           setPlacedTeams(parsed.teams || []);
           setObstacles(parsed.obstacles || []);
+          setGuideLines(parsed.guideLines || []);
+          setMeasurements(parsed.measurements || []);
+          lastSavedSnapshotRef.current = getProjectStateHash(parsed.teams, parsed.obstacles, parsed.guideLines, parsed.measurements);
           hasLoadedInitialTeams.current = true;
           setIsLoadingEvent(false);
-          return;
+          if (!currentUser) return;
         } catch (e) {}
       }
     }
@@ -141,13 +156,22 @@ function PlannerPage() {
               ...data
             }));
             
-            if (!hasLoadedInitialTeams.current || hasLoadedInitialTeams.current === 'from_main') {
-              setPlacedTeams(data.teams || []);
-              setObstacles(data.obstacles || []);
-              setGuideLines(data.guideLines || []);
-              setMeasurements(data.measurements || []);
-              hasLoadedInitialTeams.current = 'from_main';
+            const incomingHash = getProjectStateHash(data.teams, data.obstacles, data.guideLines, data.measurements);
+
+            // Jeśli dane w bazie są dokładnie takie same jak nasz bieżący stan (np. echo zapisu), ignorujemy
+            if (hasLoadedInitialTeams.current && incomingHash === lastSavedSnapshotRef.current) {
+              setErrorEvent(null);
+              setIsLoadingEvent(false);
+              return;
             }
+
+            // Inicjalne wczytanie lub faktyczna zmiana z zewnątrz
+            setPlacedTeams(data.teams || []);
+            setObstacles(data.obstacles || []);
+            setGuideLines(data.guideLines || []);
+            setMeasurements(data.measurements || []);
+            lastSavedSnapshotRef.current = incomingHash;
+            hasLoadedInitialTeams.current = 'from_main';
             setErrorEvent(null);
           } else if (trackPreset) {
             // Projekt jeszcze nie istnieje w bazie usera, ale jest to preset
@@ -233,6 +257,9 @@ function PlannerPage() {
         cleanData.createdAt = serverTimestamp();
       }
 
+      // Aktualizujemy zapisany hash, aby autozapis ani echo onSnapshot nie ponawiały zapisu
+      lastSavedSnapshotRef.current = getProjectStateHash(placedTeams, obstacles, guideLines, measurements);
+
       // Zawsze aktualizujemy lokalny cache w localStorage (do szybkiego wczytania i trybu offline)
       if (eventId.startsWith('local-')) {
         const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
@@ -265,8 +292,20 @@ function PlannerPage() {
       return;
     }
 
-    const timer = setTimeout(() => {
+    const currentHash = getProjectStateHash(placedTeams, obstacles, guideLines, measurements);
+
+    // KLUCZOWE: Jeśli dane są identyczne z tym, co już zapisane, NIE ZAPISUJEMY I NIE TWORZYMY TIMERA!
+    if (currentHash === lastSavedSnapshotRef.current) {
+      setSaveStatus('saved');
+      return;
+    }
+
+    // Użytkownik dokonał realnej zmiany na canvasie
+    setSaveStatus('unsaved');
+
+    const timer = setTimeout(async () => {
       try {
+        setSaveStatus('saving');
         const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
         const rawPayload = JSON.parse(JSON.stringify({
           id: eventId,
@@ -285,15 +324,16 @@ function PlannerPage() {
         const cleanData = sanitizeForFirestore(rawPayload);
         cleanData.updatedAt = serverTimestamp();
 
+        // Zapamiętujemy hash PRZED wysłaniem do Firestore, by onSnapshot wiedział, że to nasze echo
+        lastSavedSnapshotRef.current = currentHash;
+
         if (eventId.startsWith('local-')) {
           const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
           localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...cleanData, updatedAt: Date.now() }));
         }
 
         if (currentUser && currentUser.uid) {
-          setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), cleanData, { merge: true }).catch((err) => {
-            console.error('Błąd automatycznego zapisu układu w tle:', err);
-          });
+          await setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), cleanData, { merge: true });
         }
         setSaveStatus('saved');
       } catch (err) {
