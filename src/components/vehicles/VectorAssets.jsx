@@ -26,29 +26,65 @@ const shadeColor = (color, percent) => {
 // Konva pozwala na użycie wbudowanych cieni (shadowColor, shadowBlur) na grupach i kształtach.
 // Kształty zostały zaprojektowane tak by miały width=100 i height proporcjonalne. Skalujemy je przez scaleX i scaleY.
 
-export const TruckAsset = ({ color = '#ef4444', width, height }) => {
+export const TruckAsset = ({
+  color = '#ef4444',
+  width,
+  height,
+  hasLift = true,
+  liftLength = 3.3,
+  truckLength = 12
+}) => {
   const roofColor = color;
   const edgeColor = shadeColor(color, -20);
   const scaleX = width / 100;
-  const scaleY = height / 400;
+
+  const validTruckLength = Math.max(1, parseFloat(truckLength) || 12);
+  const validLiftLength = hasLift ? Math.max(0, parseFloat(liftLength) || 0) : 0;
+  const totalLength = validTruckLength + validLiftLength;
+
+  const liftRatio = totalLength > 0 ? validLiftLength / totalLength : 0;
+  const bodyRatio = 1 - liftRatio;
+
+  const bodyHeight = height * bodyRatio;
+  const liftHeight = height * liftRatio;
+
+  // Wymiary bazowe wektorów: ciało naczepy z kabiną = 310, rampa = 90
+  const bodyScaleY = bodyHeight / 310;
+  const liftScaleY = liftHeight > 0 ? liftHeight / 90 : 1;
 
   return (
-    <Group scaleX={scaleX} scaleY={scaleY}>
-      {/* Kabina */}
-      <Rect x={10} y={0} width={80} height={75} cornerRadius={[10, 10, 2, 2]} fill={edgeColor} />
-      <Rect x={15} y={5} width={70} height={50} cornerRadius={5} fill="#334155" /> 
-      <Rect x={20} y={15} width={60} height={30} cornerRadius={3} fill="#94a3b8" />
-      
-      {/* Naczepa (przestrzeń ładunkowa) */}
-      <Rect x={0} y={78} width={100} height={232} cornerRadius={4} fill={roofColor} />
-      <Rect x={5} y={83} width={90} height={222} cornerRadius={2} fill="rgba(255,255,255,0.1)" />
+    <Group scaleX={scaleX}>
+      {/* Kabina i naczepa (przestrzeń ładunkowa) */}
+      <Group y={0} scaleY={bodyScaleY}>
+        {/* Kabina */}
+        <Rect x={10} y={0} width={80} height={75} cornerRadius={[10, 10, 2, 2]} fill={edgeColor} />
+        <Rect x={15} y={5} width={70} height={50} cornerRadius={5} fill="#334155" /> 
+        <Rect x={20} y={15} width={60} height={30} cornerRadius={3} fill="#94a3b8" />
+        
+        {/* Naczepa */}
+        <Rect x={0} y={78} width={100} height={232} cornerRadius={4} fill={roofColor} />
+        <Rect x={5} y={83} width={90} height={222} cornerRadius={2} fill="rgba(255,255,255,0.1)" />
+
+        {/* Zderzak tylny gdy brak windy */}
+        {(!hasLift || validLiftLength <= 0) && (
+          <>
+            <Rect x={0} y={306} width={100} height={4} cornerRadius={[0, 0, 4, 4]} fill="#1e293b" />
+            <Rect x={4} y={306} width={18} height={3} fill="#ef4444" cornerRadius={1} />
+            <Rect x={78} y={306} width={18} height={3} fill="#ef4444" cornerRadius={1} />
+          </>
+        )}
+      </Group>
       
       {/* Rozłożona winda / rampa dla samochodów (na końcu naczepy) */}
-      <Rect x={0} y={310} width={100} height={90} cornerRadius={[0, 0, 4, 4]} fill="#475569" />
-      <Rect x={5} y={315} width={90} height={80} cornerRadius={2} fill="#64748b" />
-      {/* Pasy najazdowe windy */}
-      <Line points={[25, 315, 25, 395]} stroke="#94a3b8" strokeWidth={4} />
-      <Line points={[75, 315, 75, 395]} stroke="#94a3b8" strokeWidth={4} />
+      {hasLift && validLiftLength > 0 && (
+        <Group y={bodyHeight} scaleY={liftScaleY}>
+          <Rect x={0} y={0} width={100} height={90} cornerRadius={[0, 0, 4, 4]} fill="#475569" />
+          <Rect x={5} y={5} width={90} height={80} cornerRadius={2} fill="#64748b" />
+          {/* Pasy najazdowe windy */}
+          <Line points={[25, 5, 25, 85]} stroke="#94a3b8" strokeWidth={4} />
+          <Line points={[75, 5, 75, 85]} stroke="#94a3b8" strokeWidth={4} />
+        </Group>
+      )}
     </Group>
   );
 };

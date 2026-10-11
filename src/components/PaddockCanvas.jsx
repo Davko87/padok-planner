@@ -358,7 +358,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
          x: t.x + exPx * tCos - eyPx * tSin,
          y: t.y + exPx * tSin + eyPx * tCos,
          widthMeters: el.width,
-         heightMeters: el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length),
+         heightMeters: el.type === 'truck'
+           ? (parseFloat(el.length) || 0) + (el.hasLift !== false ? (parseFloat(el.liftLength ?? 3.3) || 0) : 0)
+           : (parseFloat(el.length) || 0),
          rotation: ((t.rotation || 0) + (el.rotation || 0)) % 360
      };
   }, [pixelsPerMeter]);
@@ -814,7 +816,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
              const rad = (el.rotation || 0) * Math.PI / 180;
              const cos = Math.cos(rad);
              const sin = Math.sin(rad);
-             const actualLength = el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length);
+             const actualLength = el.type === 'truck'
+               ? (parseFloat(el.length) || 0) + (el.hasLift !== false ? (parseFloat(el.liftLength ?? 3.3) || 0) : 0)
+               : (parseFloat(el.length) || 0);
              const corners = [
                { x: el.offsetX, y: el.offsetY },
                { x: el.offsetX + el.width * cos, y: el.offsetY + el.width * sin },
@@ -1167,7 +1171,9 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                 {/* Renderowanie elementów modułowych lub fallbacku */}
                 {team.elements && team.elements.length > 0 ? (
                   team.elements.map(el => {
-                    const actualLength = el.type === 'truck' ? parseFloat(el.length) + 3.3 : parseFloat(el.length);
+                    const actualLength = el.type === 'truck'
+                ? (parseFloat(el.length) || 0) + (el.hasLift !== false ? (parseFloat(el.liftLength ?? 3.3) || 0) : 0)
+                : (parseFloat(el.length) || 0);
                     const elW = el.width * pixelsPerMeter;
                     const elH = actualLength * pixelsPerMeter;
                     const elX = el.offsetX * pixelsPerMeter;
@@ -1323,7 +1329,16 @@ const PaddockCanvas = forwardRef(function PaddockCanvas({
                           onUpdateTeams && onUpdateTeams(updated);
                         }}
                       >
-                        {el.type === 'truck' && <TruckAsset color={team.color} width={elW} height={elH} />}
+                        {el.type === 'truck' && (
+                          <TruckAsset
+                            color={team.color}
+                            width={elW}
+                            height={elH}
+                            hasLift={el.hasLift !== false}
+                            liftLength={el.hasLift !== false ? (parseFloat(el.liftLength ?? 3.3) || 0) : 0}
+                            truckLength={parseFloat(el.length) || 12}
+                          />
+                        )}
                         {el.type === 'awning' && <AwningAsset color={team.color} width={elW} height={elH} />}
                         {el.type === 'van' && <VanAsset color={team.color} width={elW} height={elH} />}
                         {el.type === 'car' && <CarAsset color={team.color} width={elW} height={elH} />}

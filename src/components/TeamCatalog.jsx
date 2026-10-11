@@ -17,11 +17,14 @@ const getTeamDimensions = (team) => {
     const rad = (el.rotation || 0) * Math.PI / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
+    const actualLength = el.type === 'truck'
+      ? (parseFloat(el.length) || 0) + (el.hasLift !== false ? (parseFloat(el.liftLength ?? 3.3) || 0) : 0)
+      : (parseFloat(el.length) || 0);
     const corners = [
       { x: el.offsetX, y: el.offsetY },
       { x: el.offsetX + el.width * cos, y: el.offsetY + el.width * sin },
-      { x: el.offsetX + el.width * cos - el.length * sin, y: el.offsetY + el.width * sin + el.length * cos },
-      { x: el.offsetX - el.length * sin, y: el.offsetY + el.length * cos }
+      { x: el.offsetX + el.width * cos - actualLength * sin, y: el.offsetY + el.width * sin + actualLength * cos },
+      { x: el.offsetX - actualLength * sin, y: el.offsetY + actualLength * cos }
     ];
     corners.forEach(p => {
       if (p.x < minX) minX = p.x;
