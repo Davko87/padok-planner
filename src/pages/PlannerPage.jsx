@@ -210,30 +210,35 @@ function PlannerPage() {
       setSaveStatus('saving');
 
       const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
-      const data = {
+      const cleanData = JSON.parse(JSON.stringify({
+        id: eventId,
         name: paddockName,
         widthMeters: eventData?.widthMeters || 250,
         heightMeters: eventData?.heightMeters || 180,
         bounds: eventData?.bounds || null,
         polygonVertices: eventData?.polygonVertices || null,
         isGoogle3D: !!eventData?.isGoogle3D,
-        teams: placedTeams,
-        guideLines,
-        measurements,
-        obstacles,
-        createdAt: eventData?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
+        teams: placedTeams || [],
+        guideLines: guideLines || [],
+        measurements: measurements || [],
+        obstacles: obstacles || [],
+        createdAt: (typeof eventData?.createdAt === 'number' || typeof eventData?.createdAt === 'string') ? eventData.createdAt : null,
+      }, (k, v) => (v === undefined ? null : v)));
+
+      cleanData.updatedAt = serverTimestamp();
+      if (!cleanData.createdAt) {
+        cleanData.createdAt = serverTimestamp();
+      }
 
       // Zawsze aktualizujemy lokalny cache w localStorage (do szybkiego wczytania i trybu offline)
       if (eventId.startsWith('local-')) {
         const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-        localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...data, id: eventId, updatedAt: Date.now() }));
+        localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...cleanData, updatedAt: Date.now() }));
       }
 
       // Jeśli użytkownik jest zalogowany, zapisujemy do chmury Firestore w profilu
       if (currentUser && currentUser.uid) {
-        await setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
+        await setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), cleanData, { merge: true });
         setSaveStatus('saved');
         setToastMessage('Projekt został pomyślnie zapisany w chmurze!');
       } else {
@@ -244,8 +249,8 @@ function PlannerPage() {
     } catch (err) {
       console.error('Błąd podczas zapisu układu:', err);
       setSaveStatus('error');
-      setToastMessage('Błąd zapisu! Sprawdź połączenie.');
-      setTimeout(() => setToastMessage(''), 3500);
+      setToastMessage(`Błąd zapisu: ${err.message || 'Sprawdź połączenie'}`);
+      setTimeout(() => setToastMessage(''), 4500);
     }
   };
 
@@ -260,27 +265,29 @@ function PlannerPage() {
     const timer = setTimeout(() => {
       try {
         const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
-        const data = {
+        const cleanData = JSON.parse(JSON.stringify({
+          id: eventId,
           name: paddockName,
           widthMeters: eventData?.widthMeters || 250,
           heightMeters: eventData?.heightMeters || 180,
           bounds: eventData?.bounds || null,
           polygonVertices: eventData?.polygonVertices || null,
           isGoogle3D: !!eventData?.isGoogle3D,
-          teams: placedTeams,
-          obstacles,
-          guideLines,
-          measurements,
-          updatedAt: serverTimestamp(),
-        };
+          teams: placedTeams || [],
+          obstacles: obstacles || [],
+          guideLines: guideLines || [],
+          measurements: measurements || [],
+        }, (k, v) => (v === undefined ? null : v)));
+
+        cleanData.updatedAt = serverTimestamp();
 
         if (eventId.startsWith('local-')) {
           const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-          localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...data, id: eventId, updatedAt: Date.now() }));
+          localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...cleanData, updatedAt: Date.now() }));
         }
 
         if (currentUser && currentUser.uid) {
-          setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true }).catch((err) => {
+          setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), cleanData, { merge: true }).catch((err) => {
             console.error('Błąd automatycznego zapisu układu w tle:', err);
           });
         }

@@ -71,12 +71,11 @@ function HomePage() {
         try {
           const item = JSON.parse(localStorage.getItem(key));
           if (item && item.id) {
+            const cleanItem = JSON.parse(JSON.stringify(item, (k, v) => (v === undefined ? null : v)));
+            cleanItem.name = cleanItem.name || 'Własny Padok';
+            cleanItem.updatedAt = serverTimestamp();
             const docRef = doc(db, 'profiles', currentUser.uid, 'projects', item.id);
-            await setDoc(docRef, {
-              ...item,
-              name: item.name || 'Własny Padok',
-              updatedAt: serverTimestamp(),
-            }, { merge: true });
+            await setDoc(docRef, cleanItem, { merge: true });
           }
         } catch (e) {
           console.warn('Błąd migracji projektu lokalnego:', e);
