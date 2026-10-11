@@ -37,6 +37,14 @@ export function AuthProvider({ children }) {
         };
         setCurrentUser(userObj);
         localStorage.setItem('padok_current_user', JSON.stringify(userObj));
+
+        // Zapewniamy, że dokument profilu w Firestore (/profiles/{uid}) fizycznie istnieje i zawiera nick oraz email
+        setDoc(doc(db, 'profiles', user.uid), {
+          uid: user.uid,
+          nick: nick,
+          email: user.email || `${nick.toLowerCase()}@padok.app`,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }).catch(e => console.warn('Błąd aktualizacji profilu w tle:', e));
       } else {
         const stored = localStorage.getItem('padok_current_user');
         if (stored) {
@@ -117,6 +125,15 @@ export function AuthProvider({ children }) {
         createdAt: serverTimestamp(),
       }).catch(e => console.warn('Błąd zapisu w tle Firestore:', e));
 
+      // 3. Zapisujemy profil w /profiles/{uid}
+      setDoc(doc(db, 'profiles', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        nick: cleanNick,
+        email: pseudoEmail,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).catch(e => console.warn('Błąd zapisu profilu w Firestore:', e));
+
       setCurrentUser(userObj);
       localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       return { success: true, user: userObj };
@@ -162,6 +179,15 @@ export function AuthProvider({ children }) {
         nick: loggedNick,
         email: pseudoEmail,
       };
+
+      // Zapisujemy/aktualizujemy profil w /profiles/{uid}
+      setDoc(doc(db, 'profiles', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        nick: loggedNick,
+        email: pseudoEmail,
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).catch(e => console.warn('Błąd aktualizacji profilu w tle:', e));
+
       setCurrentUser(userObj);
       localStorage.setItem('padok_current_user', JSON.stringify(userObj));
       return { success: true, user: userObj };

@@ -127,7 +127,7 @@ function PlannerPage() {
 
     let unsubscribeEvent = null;
     
-    if (currentUser && !eventId.startsWith('local-')) {
+    if (currentUser) {
       const docRef = doc(db, 'profiles', currentUser.uid, 'projects', eventId);
       unsubscribeEvent = onSnapshot(
         docRef,
@@ -200,34 +200,22 @@ function PlannerPage() {
     };
   }, [eventId, currentUser?.uid]);
 
-  // ZADANIE 7: Ręczny zapis układu po kliknięciu przycisku "Zapisz układ"
+  // Ręczny zapis układu po kliknięciu przycisku "Zapisz układ"
   const handleSavePaddock = async () => {
     if (!eventId || eventId === 'demo') {
       setSaveStatus('saved');
       return;
     }
-    if (eventId.startsWith('local-')) {
-      try {
-        setSaveStatus('saving');
-        const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-        const updated = { ...current, teams: placedTeams, guideLines, measurements, obstacles, updatedAt: Date.now() };
-        localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
-        setSaveStatus('saved');
-        setToastMessage('Projekt (lokalny) został pomyślnie zapisany!');
-        setTimeout(() => setToastMessage(''), 3500);
-      } catch (e) {
-        setSaveStatus('error');
-      }
-      return;
-    }
     try {
       setSaveStatus('saving');
-      // Jeśli to preset z mapy (który nie ma jeszcze wpisu), kopiujemy dane bazowe
+
+      const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
       const data = {
-        name: eventData?.name || 'Nowy Padok',
+        name: paddockName,
         widthMeters: eventData?.widthMeters || 250,
         heightMeters: eventData?.heightMeters || 180,
         bounds: eventData?.bounds || null,
+        polygonVertices: eventData?.polygonVertices || null,
         isGoogle3D: !!eventData?.isGoogle3D,
         teams: placedTeams,
         guideLines,
@@ -237,87 +225,74 @@ function PlannerPage() {
         updatedAt: serverTimestamp(),
       };
 
-      if (!currentUser) {
-        setSaveStatus('error');
-        setToastMessage('Zaloguj się, aby zapisać w chmurze!');
-        setTimeout(() => setToastMessage(''), 3500);
-        return;
+      // Zawsze aktualizujemy lokalny cache w localStorage (do szybkiego wczytania i trybu offline)
+      if (eventId.startsWith('local-')) {
+        const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
+        localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...data, id: eventId, updatedAt: Date.now() }));
       }
 
-      const savePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
-      savePromise.catch((err) => {
-        console.error('Błąd ręcznego zapisu układu do Firestore:', err);
-        setSaveStatus('error');
-      });
-
-      setSaveStatus('saved');
-      setToastMessage('Projekt został pomyślnie zapisany!');
+      // Jeśli użytkownik jest zalogowany, zapisujemy do chmury Firestore w profilu
+      if (currentUser && currentUser.uid) {
+        await setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
+        setSaveStatus('saved');
+        setToastMessage('Projekt został pomyślnie zapisany w chmurze!');
+      } else {
+        setSaveStatus('saved');
+        setToastMessage('Projekt (lokalny) został pomyślnie zapisany!');
+      }
       setTimeout(() => setToastMessage(''), 3500);
     } catch (err) {
-      console.error('Błąd ogólny podczas zapisu układu:', err);
+      console.error('Błąd podczas zapisu układu:', err);
       setSaveStatus('error');
       setToastMessage('Błąd zapisu! Sprawdź połączenie.');
       setTimeout(() => setToastMessage(''), 3500);
     }
   };
 
-  // ZADANIE 7: Automatyczny zapis (debounce 2 sekundy) po zmianie na canvasie lub w D-Padzie
+  // Automatyczny zapis po zmianie na canvasie lub w D-Padzie
   useEffect(() => {
     if (!hasLoadedInitialTeams.current) return;
     if (!eventId || eventId === 'demo') {
       setSaveStatus('saved');
       return;
     }
-    if (eventId.startsWith('local-')) {
-      const timer = setTimeout(() => {
-        try {
-          const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
-          const updated = { ...current, teams: placedTeams, obstacles, guideLines, measurements, updatedAt: Date.now() };
-          localStorage.setItem('local-event-' + eventId, JSON.stringify(updated));
-          setSaveStatus('saved');
-        } catch (e) {
-          setSaveStatus('error');
-        }
-      }, 500);
-      return () => clearTimeout(timer);
-    }
 
     const timer = setTimeout(() => {
       try {
-        // Cichy autozapis - nie zmieniamy statusu na pending/saving aby nie mrugało
-        // Podobnie w autozapisie, musimy uwzględnić całą strukturę projektu
+        const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
         const data = {
-          name: eventData?.name || 'Nowy Padok',
+          name: paddockName,
           widthMeters: eventData?.widthMeters || 250,
           heightMeters: eventData?.heightMeters || 180,
           bounds: eventData?.bounds || null,
+          polygonVertices: eventData?.polygonVertices || null,
           isGoogle3D: !!eventData?.isGoogle3D,
           teams: placedTeams,
           obstacles,
           guideLines,
           measurements,
-          createdAt: eventData?.createdAt || serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
 
-        if (!currentUser) return;
+        if (eventId.startsWith('local-')) {
+          const current = JSON.parse(localStorage.getItem('local-event-' + eventId) || '{}');
+          localStorage.setItem('local-event-' + eventId, JSON.stringify({ ...current, ...data, id: eventId, updatedAt: Date.now() }));
+        }
 
-        const writePromise = setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true });
-        
-        writePromise.catch((err) => {
-          console.error('Błąd automatycznego zapisu układu w tle:', err);
-          setSaveStatus('error');
-        });
-
+        if (currentUser && currentUser.uid) {
+          setDoc(doc(db, 'profiles', currentUser.uid, 'projects', eventId), data, { merge: true }).catch((err) => {
+            console.error('Błąd automatycznego zapisu układu w tle:', err);
+          });
+        }
         setSaveStatus('saved');
       } catch (err) {
         console.error('Błąd automatycznego zapisu układu:', err);
         setSaveStatus('error');
       }
-    }, 2000);
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [placedTeams, guideLines, measurements, obstacles, eventId]);
+  }, [placedTeams, guideLines, measurements, obstacles, eventId, currentUser?.uid]);
 
   // Obsługa kliknięcia "+" w katalogu teamów -> dodaje na wolne miejsce w pobliżu środka sceny
   const handleSelectTeamFromCatalog = (teamTemplate) => {

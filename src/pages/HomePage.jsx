@@ -64,6 +64,26 @@ function HomePage() {
       return;
     }
 
+    // Automatyczna migracja projektów lokalnych do chmury profilu użytkownika
+    const localKeys = Object.keys(localStorage).filter(key => key.startsWith('local-event-'));
+    if (localKeys.length > 0) {
+      localKeys.forEach(async (key) => {
+        try {
+          const item = JSON.parse(localStorage.getItem(key));
+          if (item && item.id) {
+            const docRef = doc(db, 'profiles', currentUser.uid, 'projects', item.id);
+            await setDoc(docRef, {
+              ...item,
+              name: item.name || 'Własny Padok',
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+          }
+        } catch (e) {
+          console.warn('Błąd migracji projektu lokalnego:', e);
+        }
+      });
+    }
+
     // Próbujemy z indeksem złożonym (ownerId + createdAt desc)
     const q = query(
       collection(db, 'profiles', currentUser.uid, 'projects'),
@@ -77,7 +97,7 @@ function HomePage() {
         ...doc.data()
       }));
       
-      // Dodaj projekty offline
+      // Dodaj projekty offline (jeśli jakieś jeszcze nie zostały wysłane)
       const localEvents = Object.keys(localStorage)
         .filter(key => key.startsWith('local-event-'))
         .map(key => JSON.parse(localStorage.getItem(key)));
@@ -447,13 +467,23 @@ function HomePage() {
       };
 
       let newId;
-      try {
-        const savePromise = addDoc(collection(db, 'profiles', currentUser.uid, 'projects'), { ...eventData, createdAt: serverTimestamp() });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
-        const docRef = await Promise.race([savePromise, timeoutPromise]);
-        newId = docRef.id;
-      } catch (err) {
-        console.warn('Zapis Offline:', err);
+      if (currentUser && currentUser.uid) {
+        try {
+          const savePromise = addDoc(collection(db, 'profiles', currentUser.uid, 'projects'), {
+            ...eventData,
+            teams: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+          const docRef = await Promise.race([savePromise, timeoutPromise]);
+          newId = docRef.id;
+        } catch (err) {
+          console.warn('Błąd zapisu do chmury, zapisuję lokalnie:', err);
+          newId = 'local-' + Date.now();
+          localStorage.setItem('local-event-' + newId, JSON.stringify({ id: newId, ...eventData, teams: [] }));
+        }
+      } else {
         newId = 'local-' + Date.now();
         localStorage.setItem('local-event-' + newId, JSON.stringify({ id: newId, ...eventData, teams: [] }));
       }
