@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs, on
 import { db } from '../lib/firebase.js';
 import { calculateBoundsDimensionsMeters, calculateHaversineDistanceMeters } from '../lib/geoUtils.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { sanitizeForFirestore } from '../lib/sanitize.js';
 import { LoginModal, RegisterModal, DeleteAccountModal } from '../components/AuthModals.jsx';
 import { Map3D, useMap3D, useMapsLibrary } from '@vis.gl/react-google-maps';
 
@@ -71,11 +72,13 @@ function HomePage() {
         try {
           const item = JSON.parse(localStorage.getItem(key));
           if (item && item.id) {
-            const cleanItem = JSON.parse(JSON.stringify(item, (k, v) => (v === undefined ? null : v)));
+            const rawItem = JSON.parse(JSON.stringify(item, (k, v) => (v === undefined ? null : v)));
+            const cleanItem = sanitizeForFirestore(rawItem);
             cleanItem.name = cleanItem.name || 'Własny Padok';
             cleanItem.updatedAt = serverTimestamp();
             const docRef = doc(db, 'profiles', currentUser.uid, 'projects', item.id);
             await setDoc(docRef, cleanItem, { merge: true });
+            localStorage.setItem(key, JSON.stringify({ ...item, ...cleanItem, updatedAt: Date.now() }));
           }
         } catch (e) {
           console.warn('Błąd migracji projektu lokalnego:', e);
@@ -385,7 +388,7 @@ function HomePage() {
       const physicalW = calculateHaversineDistanceMeters(minLat, minLng, minLat, maxLng);
       const physicalH = calculateHaversineDistanceMeters(minLat, minLng, maxLat, minLng);
       maxDim = Math.max(physicalW, physicalH);
-      polygonVertices = polygonPoints;
+      polygonVertices = polygonPoints.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : p);
     } else {
       centerCoords = [camera.center.lng, camera.center.lat];
     }
@@ -454,7 +457,7 @@ function HomePage() {
       // Nie używamy już przybliżonego algorytmu, lecz dokładnej matematyki z FOV!
       const trueSize = confirmedBounds.trueWidthMeters || 250;
 
-      const eventData = {
+      const rawEventData = {
         name: customEventName.trim() || 'Własny Padok na Ziemi',
         widthMeters: trueSize,
         heightMeters: trueSize,
@@ -464,6 +467,7 @@ function HomePage() {
         // Nie zapisujemy już gigantycznego obrazu Esri (imageUrl)!
         isGoogle3D: true // flaga dla nowego plannera
       };
+      const eventData = sanitizeForFirestore(rawEventData);
 
       let newId;
       if (currentUser && currentUser.uid) {

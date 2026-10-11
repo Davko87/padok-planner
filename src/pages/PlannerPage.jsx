@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { sanitizeForFirestore } from '../lib/sanitize.js';
 import { findCleanSpotForNode, findMagneticSnapPosition } from '../lib/geoUtils.js';
 import TeamCatalog from '../components/TeamCatalog.jsx';
 import PaddockCanvas from '../components/PaddockCanvas.jsx';
@@ -210,7 +211,7 @@ function PlannerPage() {
       setSaveStatus('saving');
 
       const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
-      const cleanData = JSON.parse(JSON.stringify({
+      const rawPayload = JSON.parse(JSON.stringify({
         id: eventId,
         name: paddockName,
         widthMeters: eventData?.widthMeters || 250,
@@ -224,6 +225,8 @@ function PlannerPage() {
         obstacles: obstacles || [],
         createdAt: (typeof eventData?.createdAt === 'number' || typeof eventData?.createdAt === 'string') ? eventData.createdAt : null,
       }, (k, v) => (v === undefined ? null : v)));
+
+      const cleanData = sanitizeForFirestore(rawPayload);
 
       cleanData.updatedAt = serverTimestamp();
       if (!cleanData.createdAt) {
@@ -265,7 +268,7 @@ function PlannerPage() {
     const timer = setTimeout(() => {
       try {
         const paddockName = eventData?.name || (eventId.startsWith('local-') ? 'Własny Padok' : 'Nowy Padok');
-        const cleanData = JSON.parse(JSON.stringify({
+        const rawPayload = JSON.parse(JSON.stringify({
           id: eventId,
           name: paddockName,
           widthMeters: eventData?.widthMeters || 250,
@@ -279,6 +282,7 @@ function PlannerPage() {
           measurements: measurements || [],
         }, (k, v) => (v === undefined ? null : v)));
 
+        const cleanData = sanitizeForFirestore(rawPayload);
         cleanData.updatedAt = serverTimestamp();
 
         if (eventId.startsWith('local-')) {
